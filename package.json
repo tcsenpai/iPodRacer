@@ -1,7 +1,7 @@
 {
   "name": "ipodracer",
   "productName": "iPodRacer",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "iPodRacer: a fully procedural 3D podracing game (Three.js)",
   "author": "tcsenpai <tcsenpai@users.noreply.github.com>",
   "homepage": "https://github.com/tcsenpai/iPodRacer",
