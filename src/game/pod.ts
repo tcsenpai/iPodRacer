@@ -31,6 +31,10 @@ const ROLL_TIME = 0.75;
 /** Wear repaired per second while the repair button is held, and the throttle cap meanwhile. */
 const REPAIR_RATE = 0.16;
 const REPAIR_THROTTLE = 0.55;
+/** Boost cooldowns (s): after a short burst, after using more than half the heat budget, after an overheat. */
+const COOLDOWN_SHORT = 3;
+const COOLDOWN_LONG = 6;
+const COOLDOWN_OVERHEAT = 15;
 
 /** Yaw rate available at speed v (rad/s): agile when slow, committed when flat out. */
 export function turnRate(v: number): number {
@@ -83,6 +87,9 @@ export class Pod {
   heat = 0;
   overheated = false;
   boosting = false;
+  /** Seconds before the boost can fire again, and the length of the current cooldown (HUD fraction). */
+  boostCooldown = 0;
+  boostCooldownMax = 1;
   /** Wear per engine (0 = pristine, 1 = destroyed): index 0 left, 1 right. Either at 1 is a crash. */
   readonly wear: [number, number] = [0, 0];
   /** 1 - wear, for the model (kept as a field to avoid per-frame tuples). */
@@ -180,25 +187,29 @@ export class Pod {
     const c = this.ctl;
     const v = this.speed;
 
-    // Engine heat: overdrive heats, cruising cools, an overheat stalls the boost until it recovers.
-    const wantBoost = c.boost && !this.overheated && !this.locked && c.throttle > 0.1;
+    // Engine heat: overdrive heats, cruising cools. Letting go of the boost starts a cooldown before it
+    // can fire again: 3 s after a short burst, 6 s if more than half the heat budget was used, 15 s
+    // after an overheat (which also costs thrust until the cooldown ends).
+    this.boostCooldown = Math.max(0, this.boostCooldown - dt);
+    const wantBoost = c.boost && !c.repair && !this.overheated && !this.locked && c.throttle > 0.1 && (this.boosting || this.boostCooldown <= 0);
     if (wantBoost && !this.boosting) w.events.boost(this);
+    if (!wantBoost && this.boosting) this.startCooldown(this.heat > 0.5 ? COOLDOWN_LONG : COOLDOWN_SHORT);
     this.boosting = wantBoost;
     if (this.boosting) this.heat += dt * 0.21;
-    else this.heat -= dt * (this.overheated ? 0.22 : 0.11);
+    else this.heat -= dt * (this.overheated ? 0.1 : 0.11);
     if (this.heat >= 1 && !this.overheated) {
       this.overheated = true;
       this.boosting = false;
+      this.startCooldown(COOLDOWN_OVERHEAT);
       w.events.overheat(this);
     }
     this.heat = clamp(this.heat, 0, 1);
-    if (this.overheated && this.heat < 0.35) this.overheated = false;
+    if (this.overheated && this.boostCooldown <= 0) this.overheated = false;
     // Repair (Episode I Racer): the droid arms patch the worst engine while the pilot eases off.
     this.repairing = c.repair && !this.locked;
     if (this.repairing) {
       const i = this.wear[0] >= this.wear[1] ? 0 : 1;
       this.wear[i] = Math.max(0, this.wear[i] - dt * REPAIR_RATE);
-      this.boosting = false;
     }
 
     // Longitudinal: thrust along the heading against drag; air brakes add drag.
@@ -377,6 +388,10 @@ export class Pod {
     }
   }
 
+  private startCooldown(seconds: number): void {
+    this.boostCooldown = this.boostCooldownMax = seconds;
+  }
+
   /** Overall damage: the worse engine (HUD, smoke, screen tint). */
   get damage(): number {
     return Math.max(this.wear[0], this.wear[1]);
@@ -427,6 +442,7 @@ export class Pod {
     this.wear[0] = this.wear[1] = 0;
     this.heat = 0;
     this.overheated = false;
+    this.boostCooldown = 0;
     this.ghost = 2.5;
     this.rollT = 1;
     const back = 30 / track.length;

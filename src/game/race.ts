@@ -142,6 +142,7 @@ export class Race {
       speed: 0,
       heat: 0,
       overheated: false,
+      cooldown: 0,
       engines: this.player.wear,
       repairing: false,
       raceTime: 0,
@@ -430,6 +431,7 @@ export class Race {
     h.speed = p.speed;
     h.heat = p.heat;
     h.overheated = p.overheated;
+    h.cooldown = p.boostCooldown / p.boostCooldownMax;
     h.repairing = p.repairing;
     // A full repair after real damage earns a callout.
     if (p.repairing) this.repairedFrom = Math.max(this.repairedFrom, p.damage);

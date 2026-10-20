@@ -138,6 +138,8 @@ html, body { margin: 0; height: 100%; background: #000; overflow: hidden; color:
 .hud-bar .hud-label { text-align: right; }
 .hud-bar-track { height: 9px; background: rgba(0, 0, 0, 0.55); border: 1px solid rgba(242, 230, 201, 0.3); transform: skewX(-20deg); overflow: hidden; }
 .hud-bar-fill { height: 100%; transform-origin: 0 50%; transform: scaleX(0); }
+.hud-bar.cool .hud-bar-fill { background: linear-gradient(90deg, #5aa8ff, #9fd3ff); }
+.hud-bar.cool.ready .hud-bar-track { box-shadow: 0 0 8px rgba(120, 200, 255, 0.7); }
 .hud-bar.heat .hud-bar-fill { background: linear-gradient(90deg, #ffd06a, #ff8a2a); }
 .hud-bar.heat.hot .hud-bar-fill { background: linear-gradient(90deg, #ff8a2a, var(--red)); }
 .hud-bar.hull .hud-bar-fill { background: linear-gradient(90deg, #9fe39f, #e7f4a0); }

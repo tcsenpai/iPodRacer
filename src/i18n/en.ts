@@ -106,6 +106,7 @@ export const en = {
   'ann.sniper': 'Tusken Raiders are shooting from the canyon rim!',
   'ann.win': '{name} wins the Boonta Eve Classic!',
   'ann.finish': '{name} crosses the line in position {pos}.',
+  'hud.cooldown': 'Boost',
   'race.go': 'GO!',
   'race.final': 'FINAL LAP',
   'race.lap': 'LAP {n}',

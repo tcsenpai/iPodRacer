@@ -99,6 +99,7 @@ export const it: Dictionary = {
   'ann.sniper': 'I Tusken sparano dal bordo del canyon!',
   'ann.win': '{name} vince la Boonta Eve Classic!',
   'ann.finish': '{name} taglia il traguardo in posizione {pos}.',
+  'hud.cooldown': 'Turbo',
   'race.go': 'VIA!',
   'race.final': 'ULTIMO GIRO',
   'race.lap': 'GIRO {n}',

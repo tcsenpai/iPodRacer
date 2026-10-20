@@ -25,6 +25,8 @@ export interface HudState {
   /** 0..1 */
   heat: number;
   overheated: boolean;
+  /** Boost cooldown remaining as a fraction 0..1 (0 = boost ready). */
+  cooldown: number;
   /** Wear per engine 0..1 (left, right). */
   engines: readonly [number, number];
   /** Repair droids at work. */
@@ -132,6 +134,9 @@ export class Hud {
   private readonly heatFill: HTMLDivElement;
   private readonly hullFill: HTMLDivElement[];
   private readonly heatRow: HTMLDivElement;
+  private readonly coolFill: HTMLDivElement;
+  private readonly coolRow: HTMLDivElement;
+  private lastCool = -1;
   private readonly hullRow: HTMLDivElement[];
   private readonly wrong: HTMLDivElement;
 
@@ -240,6 +245,7 @@ export class Hud {
       return [row, fill];
     };
     [this.heatRow, this.heatFill] = bar('hud.heat', 'heat');
+    [this.coolRow, this.coolFill] = bar('hud.cooldown', 'cool');
     const [rowL, fillL] = bar('hud.engL', 'hull');
     const [rowR, fillR] = bar('hud.engR', 'hull');
     this.hullRow = [rowL, rowR];
@@ -248,7 +254,7 @@ export class Hud {
     overTag.classList.add('hud-over');
     const repairTag = this.label('hud.repairing');
     repairTag.classList.add('hud-repair');
-    this.speedBox.append(speedNum, unit, this.heatRow, rowL, rowR, overTag, repairTag);
+    this.speedBox.append(speedNum, unit, this.heatRow, this.coolRow, rowL, rowR, overTag, repairTag);
 
     this.wrong = el('div', 'hud-wrong');
     this.labels.push([this.wrong, 'race.wrongway']);
@@ -400,6 +406,12 @@ export class Hud {
     if (hot !== this.lastHot) {
       this.lastHot = hot;
       this.heatRow.classList.toggle('hot', hot);
+    }
+    const cool = percent(s.cooldown);
+    if (cool !== this.lastCool) {
+      this.lastCool = cool;
+      this.coolFill.style.transform = SCALE_X[cool];
+      this.coolRow.classList.toggle('ready', cool === 0);
     }
     if (s.overheated !== this.lastOver) {
       this.lastOver = s.overheated;

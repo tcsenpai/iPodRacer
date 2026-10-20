@@ -140,7 +140,7 @@ export class Pilot {
     c.brake = v > limit + 10 ? clamp((v - limit) / 30, 0, 1) : 0;
 
     // Boost on a long clear straight, until the engines get hot.
-    if (!assist && this.boostHold <= 0 && limit > VMAX * 1.25 && pod.heat < 0.4 && Math.random() < diff.boost * dt) this.boostHold = 2 + Math.random() * 2;
+    if (!assist && this.boostHold <= 0 && pod.boostCooldown <= 0 && limit > VMAX * 1.25 && pod.heat < 0.4 && Math.random() < diff.boost * dt) this.boostHold = 2 + Math.random() * 2;
     this.boostHold -= dt;
     // Repairs on the straights once an engine is badly hurt, never while boosting.
     c.repair = pod.damage > 0.45 && limit > VMAX * 1.05;
