@@ -3,6 +3,7 @@
 import '@fontsource/orbitron/600.css';
 import './style.css';
 import * as THREE from 'three';
+import { Announcer } from './audio/announcer';
 import { GameAudio } from './audio/audio';
 import { Engine } from './core/engine';
 import { Input } from './core/input';
@@ -40,6 +41,8 @@ engine.setScene(scene);
 const input = new Input();
 const audio = new GameAudio();
 audio.setVolume(settings.volume);
+const announcer = new Announcer();
+announcer.enabled = settings.announcer;
 const hud = new Hud(app, track.centerXZ());
 hud.setVisible(false);
 const rig = new CameraRig(engine.camera, track);
@@ -74,7 +77,7 @@ function startRace(): void {
   menus.hide();
   input.clearPresses();
   rig.mode = settings.camera;
-  race = new Race({ scene, engine, track, colliders, hud, audio, fx, dust, rig }, settings.difficulty);
+  race = new Race({ scene, engine, track, colliders, hud, audio, fx, dust, rig, announcer }, settings.difficulty);
   state = 'race';
 }
 
@@ -82,6 +85,7 @@ function setPaused(on: boolean): void {
   if (!race) return;
   state = on ? 'paused' : 'race';
   audio.setRacing(!on);
+  if (on) announcer.stop();
   input.clearPresses();
   if (on) menus.showPause();
   else menus.hide();
@@ -109,6 +113,8 @@ const menus = new Menus(app, settings, {
     engine.setQuality(s.quality);
     audio.setVolume(s.volume);
     rig.mode = s.camera;
+    announcer.enabled = s.announcer;
+    if (!s.announcer) announcer.stop();
     saveSettings(s);
   },
   resume: () => setPaused(false),

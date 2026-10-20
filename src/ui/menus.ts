@@ -41,6 +41,7 @@ const DIFF_DESC: Record<Difficulty, StringKey> = {
 const QUALITIES: readonly Quality[] = ['low', 'medium', 'high'];
 const QUALITY_KEY: Record<Quality, StringKey> = { low: 'set.q.low', medium: 'set.q.medium', high: 'set.q.high' };
 const CAMERAS: readonly CameraMode[] = ['chase', 'far', 'cockpit'];
+const ONOFF = ['on', 'off'] as const;
 const CAMERA_KEY: Record<CameraMode, StringKey> = { chase: 'set.cam.chase', far: 'set.cam.far', cockpit: 'set.cam.cockpit' };
 
 /** Key caps are not translated except where they contain words. */
@@ -224,6 +225,7 @@ export class Menus {
         this.field('set.quality', this.chips(QUALITIES, s.quality, (q) => t(QUALITY_KEY[q]), (q) => (s.quality = q))),
         this.field('set.volume', volume),
         this.field('set.camera', this.chips(CAMERAS, s.camera, (c) => t(CAMERA_KEY[c]), (c) => (s.camera = c))),
+        this.field('set.announcer', this.chips(ONOFF, s.announcer ? 'on' : 'off', (v) => t(v === 'on' ? 'set.on' : 'set.off'), (v) => (s.announcer = v === 'on'))),
         this.field('set.language', this.langSwitch()),
       );
 

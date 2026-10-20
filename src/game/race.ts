@@ -1,6 +1,7 @@
 // The Boonta Eve race: grid, cinematic intro, countdown, three laps against five rivals, finish.
 // Owns the pods and their pilots; turns physics events into sound, particles, camera and HUD moments.
 import * as THREE from 'three';
+import type { Announcer } from '../audio/announcer';
 import type { GameAudio, EngineVoice } from '../audio/audio';
 import type { Engine } from '../core/engine';
 import type { Input } from '../core/input';
@@ -60,6 +61,7 @@ export interface RaceDeps {
   fx: Fx;
   dust: DustTrail;
   rig: CameraRig;
+  announcer: Announcer;
 }
 
 const _a = new THREE.Vector3();
@@ -98,6 +100,12 @@ export class Race {
   /** The engine-hit repair hint shows once per race. */
   private hintShown = false;
   private repairedFrom = 0;
+  /** Commentary state: current leader and the highest lap any pod has completed. */
+  private leader: Pod | null = null;
+  private leaderLap = 0;
+  private sniperCalled = false;
+  /** Centre of the grandstands (start/finish line), for the crowd roar. */
+  private readonly stands = new THREE.Vector3();
   /** Rival engine voices, index i mirrors pods[i + 1]. */
   private voices: EngineVoice[];
 
@@ -149,6 +157,7 @@ export class Race {
     d.audio.setRacing(true);
     d.audio.music('race');
     this.snipers = new Snipers(d.track, this.sniperEvents());
+    d.track.frame(0, this.stands, _a, _b);
     d.scene.add(this.snipers.group);
     this.nextShot();
   }
@@ -159,6 +168,7 @@ export class Race {
     this.d.hud.caption('', '');
     this.d.hud.letterbox(false);
     this.d.audio.setRacing(false);
+    this.d.announcer.stop();
   }
 
   private sniperEvents(): SniperEvents {
@@ -184,6 +194,10 @@ export class Race {
           if (!this.hintShown) {
             this.hintShown = true;
             d.hud.banner(t('race.enginehit'), 'warn', 2.5);
+          }
+          if (!this.sniperCalled) {
+            this.sniperCalled = true;
+            d.announcer.say('ann.sniper', undefined, true);
           }
         } else if (dodged) {
           d.hud.trick(t('race.dodge'));
@@ -222,11 +236,13 @@ export class Race {
           d.rig.shake(1.2);
           d.engine.flash = 0.4;
           this.slow(1.2, 0.35);
+          d.announcer.say('ann.crash', { name: pod.spec.name }, true);
         } else {
           if (pod.crashes >= RIVAL_LIVES) {
             pod.out = true;
             d.hud.banner(t('race.rivalout', { name: pod.spec.name }), 'info');
-          }
+            d.announcer.say('ann.out', { name: pod.spec.name }, true);
+          } else d.announcer.say('ann.crash', { name: pod.spec.name });
           if (nearCam(pod) < 350) {
             this.slow(0.9, 0.35);
             d.rig.shake(0.5);
@@ -287,6 +303,7 @@ export class Race {
       p.y = groundHeight(track, p.x, p.z) + 2;
       rig.setShot({ kind: 'crane', at: p, heading: Math.atan2(tg.x, -tg.z) });
       hud.caption(t('race.intro.title'), t('race.intro.sub'));
+      this.d.announcer.say('ann.intro', undefined, true);
     } else {
       const pod = this.pods[s.who];
       rig.setShot({ kind: s.who === 0 ? 'low' : 'orbit', pod });
@@ -375,6 +392,7 @@ export class Race {
           if (victim.player || src.pos.distanceTo(d.rig.camera.position) < 120) d.audio.flame();
           if (victim.player) {
             d.hud.banner(t('race.flame'), 'warn', 1.2);
+            d.announcer.say('ann.flame');
             d.rig.shake(0.5);
           }
         }
@@ -446,6 +464,7 @@ export class Race {
     }
     d.hud.banner(t('race.go'), 'go');
     d.audio.countdown(0);
+    d.announcer.say('ann.go', undefined, true);
     d.rig.shake(0.4);
     if (this.perfectWindow) this.perfectStart();
   }
@@ -472,6 +491,12 @@ export class Race {
       if (pod.player) this.finish();
       return;
     }
+    // The first pod through the line calls the lap for the commentators.
+    if (lap > this.leaderLap) {
+      this.leaderLap = lap;
+      const final = lap === LAPS - 1;
+      this.d.announcer.say(final ? 'ann.final' : 'ann.lap', { name: pod.spec.name, n: lap }, final);
+    }
     if (pod.player) {
       const final = lap === LAPS - 1;
       this.d.hud.banner(final ? t('race.final') : t('race.lap', { n: lap + 1 }), final ? 'final' : 'lap');
@@ -486,6 +511,8 @@ export class Race {
     this.rank();
     d.hud.banner(`${t('race.finish')} · ${t('race.position', { pos: this.position })}`, 'final', 4);
     d.audio.finish(this.position === 1);
+    if (this.position === 1) d.announcer.say('ann.win', { name: this.player.spec.name }, true);
+    else d.announcer.say('ann.finish', { name: this.player.spec.name, pos: this.position }, true);
     d.hud.letterbox(true);
     d.rig.setShot({ kind: 'finish', pod: this.player });
     this.slow(2.4, 0.3);
@@ -504,6 +531,9 @@ export class Race {
     const pos = this.order.indexOf(this.player) + 1;
     if (this.position && pos < this.position && this.phase === 'racing') this.d.hud.trick(`${t('race.overtake')} ${t('race.position', { pos })}`);
     this.position = pos;
+    const leader = this.order[0];
+    if (this.phase === 'racing' && this.time > 3 && leader !== this.leader) this.d.announcer.say('ann.lead', { name: leader.spec.name });
+    this.leader = leader;
   }
 
   /** Dust, smoke from damaged or overheated engines, zoom blur, damage tint. */
@@ -551,7 +581,9 @@ export class Race {
     d.engine.damage = p.alive ? Math.max(0, p.damage - 0.35) * 1.2 : 0.35;
     d.engine.flash = Math.max(0, d.engine.flash - dt * 2.5);
 
-    // Audio: rival voices mirror their pods.
+    // Audio: the stands roar as the camera nears them; rival voices mirror their pods.
+    const near = Math.max(0, 1 - d.rig.camera.position.distanceTo(this.stands) / 700);
+    d.audio.crowd(near * near * (this.phase === 'finished' ? 1.4 : 1));
     for (let i = 0; i < this.voices.length; i++) {
       const v = this.voices[i];
       const pod = this.pods[i + 1];

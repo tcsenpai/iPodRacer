@@ -583,6 +583,7 @@ export class GameAudio {
   private volume = 0.8;
   private racingOn = false;
   private wantMusic: MusicMode = 'off';
+  private crowdGain: GainNode | null = null;
   private curMusic: MusicMode = 'off';
   private tracks: Track[] = [];
   private player: PlayerRig | null = null;
@@ -700,6 +701,40 @@ export class GameAudio {
     this.racingOn = on;
     const c = this.c;
     if (c) c.racing.gain.setTargetAtTime(on ? 1 : 0, c.ctx.currentTime, on ? 0.35 : 0.2);
+  }
+
+  /** Grandstand roar at `level` 0..1 (the race sets it from the camera's distance to the stands). */
+  crowd(level: number): void {
+    const c = this.c;
+    if (!c) return;
+    if (!this.crowdGain) {
+      const ctx = c.ctx;
+      const src = ctx.createBufferSource();
+      src.buffer = c.white;
+      src.loop = true;
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.value = 900;
+      bp.Q.value = 0.6;
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.value = 2400;
+      // Slow swells: thousands of voices never shout in unison.
+      const amp = ctx.createGain();
+      amp.gain.value = 0.75;
+      const lfo = ctx.createOscillator();
+      lfo.frequency.value = 0.37;
+      const depth = ctx.createGain();
+      depth.gain.value = 0.25;
+      lfo.connect(depth).connect(amp.gain);
+      const g = ctx.createGain();
+      g.gain.value = 0;
+      src.connect(bp).connect(lp).connect(amp).connect(g).connect(c.racing);
+      src.start();
+      lfo.start();
+      this.crowdGain = g;
+    }
+    this.crowdGain.gain.setTargetAtTime(level * 0.45, c.ctx.currentTime, 0.3);
   }
 
   // ---- per-frame engines ---------------------------------------------------

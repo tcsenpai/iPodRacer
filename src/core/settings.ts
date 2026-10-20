@@ -45,12 +45,14 @@ export interface Settings {
   /** Master volume 0..1. */
   volume: number;
   camera: CameraMode;
+  /** Race commentary through the browser's speech synthesis (Fode and Beed style). */
+  announcer: boolean;
   best: Partial<Record<Difficulty, BestResult>>;
 }
 
 const KEY = 'ipodracer.settings.v1';
 
-const DEFAULTS: Settings = { difficulty: 'semipro', quality: 'high', volume: 0.8, camera: 'chase', best: {} };
+const DEFAULTS: Settings = { difficulty: 'semipro', quality: 'high', volume: 0.8, camera: 'chase', announcer: true, best: {} };
 
 export function loadSettings(): Settings {
   try {

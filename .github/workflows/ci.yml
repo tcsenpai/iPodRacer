@@ -1,0 +1,25 @@
+# Type-check and build on every push and pull request, and guard the house rules (no em dashes).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm run icon
+      - name: No em dashes in source and docs
+        run: |
+          if git grep -nP '\x{2014}' -- src scripts electron index.html README.md LEGAL.md .github; then
+            echo "Em dashes found (U+2014): use ':', ',', '·' or '...'"; exit 1
+          fi

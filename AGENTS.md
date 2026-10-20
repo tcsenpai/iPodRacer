@@ -74,7 +74,10 @@ src/
   render/             MSAA render pass, sun-flare probe, finish (grade, grain, vignette, flash, fade, zoom blur)
   i18n/               t(), languages (en source keys, it)
   audio/audio.ts      GameAudio: synthesized pod engines (player + doppler rival voices), wind, impacts,
-                      explosions, stingers, menu/race music; nothing plays until unlock() from a gesture
+                      explosions, sniper/flame cues, crowd roar, stingers, menu/race music; nothing plays
+                      until unlock() from a gesture
+  audio/announcer.ts  race commentary via speechSynthesis (original lines in i18n `ann.*`, two voices,
+                      big lines interrupt, chatter is dropped not queued); toggle in settings
   game/pod.ts         Pod: model + physics (thrust/drag, yaw-rate steering, grip/slide, sprung hover with
                       airtime, canyon/dune walls, rock and pod collisions, heat/overheat, damage/crash,
                       barrel roll, knife edge, per-engine wear with asymmetric pull, hold-to-repair) and
@@ -112,6 +115,10 @@ src/
   models/podTextures.ts  1024 px procedural PBR maps (albedo, paint masks, normal, roughness/metalness)
   main.ts             app flow: title showcase, race, pause, results; persists settings
 electron/main.cjs     desktop shell (loads dist/index.html; F11 / Alt+Enter fullscreen)
+scripts/make-icon.mjs procedural app icon -> build/icon.png (npm run icon), used by electron-builder
+.github/workflows/    ci.yml (build, icon, em-dash check on push/PR), release.yml (v* tag -> desktop
+                      builds for mac/win/linux attached to the GitHub release)
+docs/                 README screenshots, captured in-engine (the only image files in the repo)
 ```
 
 In dev, `window.app` exposes `{ engine, scene, track, rig, settings, start(), sim(seconds), race, state }`.
@@ -140,9 +147,8 @@ Known limitations:
 
 ## To build next (see `myc list`)
 
-Graphics polish (rock canyon walls, crowds, Mos Espa start), more tracks, and the desktop release setup:
-port from `../yavin` (`package.json` build targets, `.github/workflows/release.yml`,
-`scripts/make-icon.mjs`).
+More fun features (see the open mycelium task), more tracks. Releases: push a `v*` tag once the GitHub
+repo exists (`package.json` `build.publish` points at `tcsenpai/iPodRacer`).
 
 <!-- myc:agents-start v=12 -->
 ## Project Management with Mycelium
