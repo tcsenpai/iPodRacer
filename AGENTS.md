@@ -38,7 +38,7 @@ whose engine this reuses: look there for working, battle-tested versions of anyt
   `myc task update N --status in_progress`, close it when verified. Capture side findings with
   `myc followup add`. At the end of every unit of work surface open follow-ups to the user.
 - Before committing: `npx tsc --noEmit`, `npm run build`, the em-dash check. Commit in small, described
-  steps. There is no git remote yet: ask the user before creating a GitHub repo.
+  steps. Public repo: github.com/tcsenpai/iPodRacer (push to main runs CI; a `v*` tag builds a release).
 - Dev server: `npm run dev` serves on **http://localhost:5175/** (5173/5174 belong to other projects).
   In dev, `window.app` exposes a test hook (see Architecture) for headless tests.
 
@@ -147,8 +147,8 @@ Known limitations:
 
 ## To build next (see `myc list`)
 
-More fun features (see the open mycelium task), more tracks. Releases: push a `v*` tag once the GitHub
-repo exists (`package.json` `build.publish` points at `tcsenpai/iPodRacer`).
+More fun features (see the open mycelium task), more tracks. Releases: bump `version` in `package.json`,
+then push a matching `v*` tag; the workflow publishes the desktop builds to that GitHub release.
 
 <!-- myc:agents-start v=12 -->
 ## Project Management with Mycelium
