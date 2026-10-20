@@ -47,20 +47,48 @@ export interface Settings {
   camera: CameraMode;
   /** Race commentary through the browser's speech synthesis (Fode and Beed style). */
   announcer: boolean;
-  best: Partial<Record<Difficulty, BestResult>>;
+  /** Best result per `${trackId}:${difficulty}` (see bestKey). */
+  best: Record<string, BestResult>;
+  /** Selected track id (TrackDef.id). */
+  track: string;
+  /** Selected pilot id per player slot (roster ids); index 1 used only in split screen. */
+  pilots: [string, string];
+  /** Local players: 2 = split screen. */
+  players: 1 | 2;
+  /** Unlocked pilot ids (the starting ones are always unlocked). */
+  unlocked: string[];
 }
 
-const KEY = 'ipodracer.settings.v1';
+export function bestKey(track: string, difficulty: Difficulty): string {
+  return `${track}:${difficulty}`;
+}
 
-const DEFAULTS: Settings = { difficulty: 'semipro', quality: 'high', volume: 0.8, camera: 'chase', announcer: true, best: {} };
+// v2: best results became per track (v1 saves only knew the Tatooine course and are migrated).
+const KEY = 'ipodracer.settings.v2';
+const KEY_V1 = 'ipodracer.settings.v1';
+
+function defaults(): Settings {
+  return { difficulty: 'semipro', quality: 'high', volume: 0.8, camera: 'chase', announcer: true, best: {}, track: 'boonta', pilots: ['anakin', 'gasgano'], players: 1, unlocked: [] };
+}
 
 export function loadSettings(): Settings {
   try {
-    const s: Settings = { ...DEFAULTS, ...JSON.parse(localStorage.getItem(KEY) ?? '{}') };
-    if (!DIFFICULTIES.includes(s.difficulty)) s.difficulty = DEFAULTS.difficulty;
+    const raw = localStorage.getItem(KEY);
+    if (raw) {
+      const s: Settings = { ...defaults(), ...JSON.parse(raw) };
+      if (!DIFFICULTIES.includes(s.difficulty)) s.difficulty = 'semipro';
+      return s;
+    }
+    const s = defaults();
+    const v1 = localStorage.getItem(KEY_V1);
+    if (v1) {
+      const old = JSON.parse(v1);
+      for (const k of ['difficulty', 'quality', 'volume', 'camera', 'announcer'] as const) if (k in old) Object.assign(s, { [k]: old[k] });
+      for (const d of DIFFICULTIES) if (old.best?.[d]) s.best[bestKey('boonta', d)] = old.best[d];
+    }
     return s;
   } catch {
-    return { ...DEFAULTS, best: {} };
+    return defaults();
   }
 }
 
