@@ -1,0 +1,39 @@
+{
+  "name": "ipodracer",
+  "productName": "iPodRacer",
+  "version": "0.1.0",
+  "description": "iPodRacer: a fully procedural 3D podracing game (Three.js)",
+  "author": "tcsenpai <tcsenpai@users.noreply.github.com>",
+  "private": true,
+  "type": "module",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "vite --port 5175 --strictPort",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "preview": "vite preview",
+    "app": "npm run build && electron ."
+  },
+  "build": {
+    "appId": "com.tcsenpai.ipodracer",
+    "productName": "iPodRacer",
+    "artifactName": "iPodRacer-${version}-${os}-${arch}.${ext}",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ]
+  },
+  "devDependencies": {
+    "@fontsource/orbitron": "^5.3.0",
+    "@types/three": "^0.186.0",
+    "electron": "^44.9.1",
+    "electron-builder": "^26.15.3",
+    "three": "^0.186.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.4"
+  }
+}

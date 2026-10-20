@@ -1,0 +1,8 @@
+:root {
+  --display: 'Orbitron', 'Segoe UI', sans-serif;
+  --amber: #ffb347;
+}
+html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+#app { position: fixed; inset: 0; }
+#app canvas { display: block; }
+.label { position: fixed; left: 16px; bottom: 14px; font-family: var(--display); font-size: 12px; letter-spacing: 0.12em; color: var(--amber); text-shadow: 0 1px 3px #000; pointer-events: none; }
