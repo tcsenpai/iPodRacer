@@ -95,6 +95,13 @@ src/
   ui/hud.ts           allocation-free HUD (position, lap, times, speed, heat, hull, minimap), banners,
                       trick popups, captions, letterbox
   ui/menus.ts         title (difficulty, settings, controls, language), pause, results
+  world/theme.ts      Theme / TrackDef contract (stable fields + per-planet terrain, liquid, surface, sky,
+                      light, props, venue, hazards)
+  world/tracks.ts     TRACKS ('boonta', 'ando', 'malastare', 'baroonda') and trackById
+  world/world.ts      buildWorld(def, renderer): scene, track, colliders, update() and view() per camera
+  world/horizon*.ts   distant ranges, sky bodies, clouds, flyers, dust devils, landmarks (sources listed in
+                      horizon.ts)
+  game/roster.ts      18 pilots with PodStats, liveries, AI traits, unlock rules, checkUnlocks, pickRivals
   world/sky.ts        analytic desert sky with twin suns, PMREM image lighting, key/fill lights, fog,
                       texel-snapped shadow frustum (exports SUN_DIRECTION used by the flare)
   world/track.ts      closed Catmull-Rom course sampled every 4 m: nearest(x, z) via spatial hash (refined

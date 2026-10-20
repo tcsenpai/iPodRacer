@@ -1,11 +1,14 @@
-// Track-side scenery: the start/finish gate, sandstone arches spanning the course, hoodoo pillars and the
-// rubble at their feet. Rock is sculpted geometry (smooth, multi-octave displaced) shaded by the shared
-// procedural surface (./surface); hoodoos switch between three detail levels with distance.
+// Track-side scenery: the start/finish gate, natural arches spanning the course, pillars either side and
+// on the racing surface, and the rubble at their feet. The pillar set depends on the planet: sculpted
+// sandstone hoodoos (Tatooine), faceted ice spires (Ando Prime), tall rock towers (Malastare), basalt
+// column clusters with ancient ruins and jungle trees (Baroonda). Rock is sculpted geometry (smooth,
+// multi-octave displaced) shaded by the shared procedural surface (./surface) in the planet's palette;
+// hoodoos switch between three detail levels with distance.
 import * as THREE from 'three';
-import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
+import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { Rng, smoothstep } from '../core/rng';
 import { noise3, rockMaterial } from './surface';
-import { groundHeight } from './terrain';
+import { groundHeight, terrainHeight } from './terrain';
 import { TRACK_HALF_WIDTH, type Track, type TrackHit } from './track';
 
 /** Solid vertical obstacle footprint, also in track coordinates so the AI can plan around it. */
@@ -164,7 +167,7 @@ function hoodooGeometry(s: HoodooShape, segs: number, step: number, detail: bool
 }
 
 /** Three detail levels; the far ones drop the ledges and the fine octave (sub-pixel there anyway). */
-function hoodooLod(s: HoodooShape): THREE.LOD {
+function hoodooLod(s: HoodooShape, mat: THREE.Material): THREE.LOD {
   const lod = new THREE.LOD();
   const levels: [number, number, boolean, number][] = [
     [40, 0.3, true, 0],
@@ -172,11 +175,132 @@ function hoodooLod(s: HoodooShape): THREE.LOD {
     [10, 2.2, false, 480],
   ];
   for (const [segs, step, detail, dist] of levels) {
-    const mesh = new THREE.Mesh(hoodooGeometry(s, segs, step, detail), rockMaterial());
+    const mesh = new THREE.Mesh(hoodooGeometry(s, segs, step, detail), mat);
     mesh.castShadow = mesh.receiveShadow = true;
     lod.addLevel(mesh, dist, 0.08);
   }
   return lod;
+}
+
+// ---------------------------------------------------------------------------------------------------
+// Ice spires (Ando Prime)
+
+/**
+ * A faceted ice spike: a 7-sided cone bent by a lean and roughened by noise, with two smaller shards
+ * leaning out of its foot (inside the collider footprint `r`). Flat normals give crisp crystal facets.
+ */
+function iceSpireGeometry(r: number, h: number, seed: number): THREE.BufferGeometry {
+  const rnd = new Rng(seed * 4099 + 7);
+  const shard = (sr: number, sh: number, x: number, z: number, lean: number, dir: number) => {
+    const SEGS = 7;
+    const RINGS = 9;
+    const pos: number[] = [];
+    const ring = (i: number) => {
+      const f = i / RINGS;
+      const y = -4 + (sh + 4) * f;
+      const rr = sr * (1 - f) ** 0.85;
+      const out: [number, number, number][] = [];
+      for (let j = 0; j < SEGS; j++) {
+        const a = (j / SEGS) * Math.PI * 2 + i * 0.37;
+        const d = 1 + (noise3(Math.cos(a) * 2, f * 4, Math.sin(a) * 2, seed) - 0.5) * 0.35;
+        out.push([x + Math.cos(a) * rr * d + Math.cos(dir) * lean * f * f * sh, y, z + Math.sin(a) * rr * d + Math.sin(dir) * lean * f * f * sh]);
+      }
+      return out;
+    };
+    let lo = ring(0);
+    for (let i = 1; i <= RINGS; i++) {
+      const hi = ring(i);
+      for (let j = 0; j < SEGS; j++) {
+        const k = (j + 1) % SEGS;
+        pos.push(...lo[j], ...hi[j], ...lo[k], ...lo[k], ...hi[j], ...hi[k]);
+      }
+      lo = hi;
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    return g;
+  };
+  const parts = [shard(r, h, 0, 0, rnd.range(0.02, 0.08), rnd.range(0, Math.PI * 2))];
+  for (let k = 0; k < 2; k++) {
+    const a = rnd.range(0, Math.PI * 2);
+    parts.push(shard(r * 0.45, h * rnd.range(0.3, 0.5), Math.cos(a) * r * 0.5, Math.sin(a) * r * 0.5, rnd.range(0.15, 0.3), a));
+  }
+  const geo = mergeGeometries(parts);
+  for (const p of parts) p.dispose();
+  geo.computeVertexNormals();
+  return geo;
+}
+
+// ---------------------------------------------------------------------------------------------------
+// Basalt columns, ruins and jungle (Baroonda)
+
+/** Flat-shaded hexagonal prisms (non-indexed copies of a 6-sided cylinder) packed inside radius `r`. */
+function basaltClusterGeometry(r: number, h: number, seed: number): THREE.BufferGeometry {
+  const rnd = new Rng(seed * 6151 + 3);
+  const parts: THREE.BufferGeometry[] = [];
+  const n = 5 + Math.round(r * 1.2);
+  for (let i = 0; i < n; i++) {
+    // Sunflower packing keeps the columns touching without overlapping much.
+    const a = i * 2.39996;
+    const d = Math.sqrt((i + 0.5) / n) * r * 0.82;
+    const cr = r * rnd.range(0.2, 0.28);
+    // Tallest in the middle, broken shorter toward the edge, every top a little different.
+    const ch = h * (1 - 0.6 * (d / r)) * rnd.range(0.7, 1.05) + 4;
+    const g = new THREE.CylinderGeometry(cr, cr * 1.04, ch, 6, 1).toNonIndexed();
+    g.deleteAttribute('uv');
+    g.rotateY(rnd.range(0, 1));
+    g.translate(Math.cos(a) * d, ch / 2 - 4, Math.sin(a) * d);
+    parts.push(g);
+  }
+  const geo = mergeGeometries(parts);
+  for (const p of parts) p.dispose();
+  geo.computeVertexNormals();
+  return geo;
+}
+
+/** A broken temple column (fluted drum stack, snapped top) lying or standing, plus its plinth. */
+function ruinColumnGeometry(h: number, seed: number): THREE.BufferGeometry {
+  const rnd = new Rng(seed * 811 + 5);
+  const parts: THREE.BufferGeometry[] = [new THREE.BoxGeometry(3.6, 1.2, 3.6).translate(0, 0.2, 0)];
+  let y = 0.8;
+  while (y < h) {
+    const dh = Math.min(rnd.range(1.6, 2.4), h - y + 0.3);
+    parts.push(new THREE.CylinderGeometry(1.15, 1.2, dh - 0.08, 16, 1).translate(rnd.range(-0.08, 0.08), y + dh / 2, rnd.range(-0.08, 0.08)));
+    y += dh;
+  }
+  for (const p of parts) p.deleteAttribute('uv');
+  const geo = mergeGeometries(parts);
+  for (const p of parts) p.dispose();
+  return geo;
+}
+
+/** Jungle tree: a leaning tapered trunk under a crown of flattened leaf clumps (vertex colours). */
+function treeGeometry(seed: number): THREE.BufferGeometry {
+  const rnd = new Rng(seed);
+  const parts: THREE.BufferGeometry[] = [];
+  const paint = (g: THREE.BufferGeometry, c: THREE.Color) => {
+    const n = g.getAttribute('position').count;
+    const col = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) c.toArray(col, i * 3);
+    g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    g.deleteAttribute('uv');
+    parts.push(g);
+  };
+  const H = 16;
+  // Non-indexed like the icosahedron clumps: mergeGeometries needs every part in the same layout.
+  paint(new THREE.CylinderGeometry(0.35, 0.7, H + 2, 8, 4).toNonIndexed().translate(0, H / 2 - 1, 0), new THREE.Color().setRGB(0.12, 0.1, 0.08));
+  for (let k = 0; k < 6; k++) {
+    const a = rnd.range(0, Math.PI * 2);
+    const d = k === 0 ? 0 : rnd.range(1.5, 3.5);
+    const s = rnd.range(2.6, 4);
+    const clump = new THREE.IcosahedronGeometry(1, 1);
+    clump.scale(s, s * 0.55, s);
+    clump.translate(Math.cos(a) * d, H + rnd.range(-1.2, 1.5), Math.sin(a) * d);
+    paint(clump, new THREE.Color().setRGB(0.04, 0.1, 0.03).multiplyScalar(rnd.range(0.75, 1.3)));
+  }
+  const geo = mergeGeometries(parts);
+  for (const p of parts) p.dispose();
+  return geo;
 }
 
 // ---------------------------------------------------------------------------------------------------
@@ -447,6 +571,15 @@ export function buildProps(track: Track): { group: THREE.Group; colliders: Colli
   const tng = new THREE.Vector3();
   const right = new THREE.Vector3();
   const hit: TrackHit = { dist: 0, floorY: 0, u: 0 };
+  const theme = track.def.theme;
+  const kind = theme.props;
+  const rock = rockMaterial(theme.surface);
+  // Glassy blue ice: low roughness so the sky's IBL and the sun streak across the facets.
+  const ice =
+    kind === 'ice'
+      ? new THREE.MeshStandardMaterial({ color: new THREE.Color().setRGB(0.5, 0.68, 0.82), roughness: 0.14, metalness: 0, emissive: new THREE.Color().setRGB(0.02, 0.05, 0.08), envMapIntensity: 1.3 })
+      : null;
+  const liquid = theme.liquid?.level ?? -Infinity;
   // `rng` drives placement and must keep its exact draw sequence (collider u/lat are part of the
   // course); everything purely visual draws from `deco`.
   const rng = new Rng(77);
@@ -484,8 +617,11 @@ export function buildProps(track: Track): { group: THREE.Group; colliders: Colli
       e.set(deco.range(-0.4, 0.4), deco.range(0, Math.PI * 2), deco.range(-0.4, 0.4));
       q.setFromEuler(e);
       sc.set(size * deco.range(0.8, 1.25), size * deco.range(0.55, 0.85), size * deco.range(0.8, 1.25));
-      // Sunk by a third so stones sit in the sand instead of on it (and never float on slopes).
-      v.set(x, groundHeight(track, x, z) - sc.y * 0.35, z);
+      // Stones never float on a frozen lake, methane or the sea.
+      const gy = terrainHeight(track, x, z);
+      if (gy < liquid) continue;
+      // Sunk by a third so stones sit in the ground instead of on it (and never float on slopes).
+      v.set(x, gy - sc.y * 0.35, z);
       list.push(new THREE.Matrix4().compose(v, q, sc));
     }
   };
@@ -509,7 +645,7 @@ export function buildProps(track: Track): { group: THREE.Group; colliders: Colli
       scatter(big, fx, fz, 10, 16, 4, 0.9, 2.2);
       scatter(small, fx, fz, 9.5, 18, 12, 0.25, 0.7);
     }
-    const arch = new THREE.Mesh(archGeometry(R, -4, feet[0], feet[1], Math.round(u * 100)), rockMaterial());
+    const arch = new THREE.Mesh(archGeometry(R, -4, feet[0], feet[1], Math.round(u * 100)), ice ?? rock);
     arch.castShadow = arch.receiveShadow = true;
     place(arch, u, 0);
     for (const s of [-1, 1]) solid(u, s * R, 9);
@@ -524,24 +660,37 @@ export function buildProps(track: Track): { group: THREE.Group; colliders: Colli
     }
     return tiers;
   };
-  /** Builds a hoodoo at (u, lat) and returns its collider radius (the visible footprint). */
-  const hoodoo = (tiers: Tier[], seed: number, u: number, lat: number): number => {
+  /**
+   * Builds the planet's pillar at (u, lat) and returns its collider radius (the visible footprint).
+   * Every set draws the same `rng` tiers, so colliders stay comparable across planets.
+   */
+  const pillar = (tiers: Tier[], seed: number, u: number, lat: number): number => {
     const base = Math.max(...tiers.map((t) => t.r));
     const r = base * 0.9;
-    const lod = hoodooLod(hoodooShape(tiers, r, seed));
-    place(lod, u, lat);
-    lod.rotation.y += deco.range(0, Math.PI * 2);
-    lod.updateMatrix();
-    lod.matrixAutoUpdate = false;
+    let obj: THREE.Object3D;
+    if (kind === 'hoodoos' || kind === 'towers') {
+      obj = hoodooLod(hoodooShape(tiers, r, seed), rock);
+      // Malastare's towers: the same sculpted column, stretched into a needle.
+      if (kind === 'towers') obj.scale.y = 1.8;
+    } else {
+      const h = tiers.reduce((sum, t) => sum + t.r * t.sy * 1.5, 0);
+      const mesh = new THREE.Mesh(ice ? iceSpireGeometry(r, h * 1.6, seed) : basaltClusterGeometry(r, h * 1.1, seed), ice ?? rock);
+      mesh.castShadow = mesh.receiveShadow = true;
+      obj = mesh;
+    }
+    place(obj, u, lat);
+    obj.rotation.y += deco.range(0, Math.PI * 2);
+    obj.updateMatrix();
+    obj.matrixAutoUpdate = false;
     return r;
   };
 
-  // Hoodoos either side of the track: a slalom for pods that run wide.
+  // Pillars either side of the track: a slalom for pods that run wide.
   for (let i = 0; i < 70; i++) {
     const tiers = tiersOf(3, 7, rng.int(2, 4));
     const u = rng.float();
     const lat = rng.sign() * rng.range(TRACK_HALF_WIDTH + 30, 200);
-    const r = hoodoo(tiers, i, u, lat);
+    const r = pillar(tiers, i, u, lat);
     solid(u, lat, r);
     const c = colliders[colliders.length - 1];
     scatter(big, c.x, c.z, r * 1.15, r * 1.15 + 5, deco.int(1, 3), 0.8, 2.0);
@@ -556,10 +705,10 @@ export function buildProps(track: Track): { group: THREE.Group; colliders: Colli
     while ([0.18, 0.47, 0.71].some((a) => Math.abs(a - u) < 0.015));
     const tiers = tiersOf(2.2, 3.4, rng.int(3, 5));
     const lat = rng.sign() * rng.range(6, TRACK_HALF_WIDTH - 8);
-    solid(u, lat, hoodoo(tiers, 100 + i, u, lat));
+    solid(u, lat, pillar(tiers, 100 + i, u, lat));
   }
 
-  // Loose desert stones along the corridor margins, between the hoodoos.
+  // Loose stones along the corridor margins, between the pillars.
   for (let i = 0; i < 160; i++) {
     const u = deco.float();
     const lat = deco.sign() * deco.range(TRACK_HALF_WIDTH + 8, 200);
@@ -567,9 +716,10 @@ export function buildProps(track: Track): { group: THREE.Group; colliders: Colli
     scatter(i % 4 ? small : big, p.x + right.x * lat, p.z + right.z * lat, 0, 4, i % 4 ? 3 : 1, 0.3, 1.6);
   }
 
-  const mat = rockMaterial();
+  if (kind === 'basalt') ruinsAndJungle(track, group, colliders, deco, rock, liquid);
+
   const instanced = (geo: THREE.BufferGeometry, list: THREE.Matrix4[], shadows: boolean) => {
-    const mesh = new THREE.InstancedMesh(geo, mat, list.length);
+    const mesh = new THREE.InstancedMesh(geo, rock, list.length);
     list.forEach((m, i) => mesh.setMatrixAt(i, m));
     mesh.computeBoundingSphere();
     mesh.castShadow = shadows;
@@ -581,4 +731,71 @@ export function buildProps(track: Track): { group: THREE.Group; colliders: Colli
   instanced(boulderGeometry(2, 23), big.filter((_, i) => i % 2 === 1), true);
   instanced(boulderGeometry(1, 37), small, false);
   return { group, colliders };
+}
+
+/**
+ * Baroonda dressing: colonnades of an ancient temple beside the course and jungle trees through the
+ * lowlands (never on the liquid, never in the gorges). Solid within reach of an off-track pod.
+ */
+function ruinsAndJungle(track: Track, group: THREE.Group, colliders: Collider[], rng: Rng, rock: THREE.Material, liquid: number): void {
+  const p = new THREE.Vector3();
+  const tng = new THREE.Vector3();
+  const right = new THREE.Vector3();
+  // Keep the gorges bare and the start paddock (stands within ~400 m of the line) clear.
+  const blocked = (x: number, z: number, u: number) =>
+    Math.min(u, 1 - u) * track.length < 400 || track.canyons.some((c) => Math.hypot(x - c.x, z - c.z) < c.r * 0.85);
+
+  // Colonnades: rows of broken columns parallel to the track, 70 to 110 m out.
+  for (let k = 0; k < 7; k++) {
+    const u0 = 0.06 + k * 0.13 + rng.range(-0.02, 0.02);
+    const side = rng.sign();
+    const lat = side * rng.range(70, 110);
+    for (let c = 0; c < 6; c++) {
+      const u = (u0 + (c * 9) / track.length) % 1;
+      track.frame(u, p, tng, right);
+      const x = p.x + right.x * lat;
+      const z = p.z + right.z * lat;
+      const gy = terrainHeight(track, x, z);
+      if (gy < liquid || blocked(x, z, u)) continue;
+      // Some stand nearly whole, most are snapped off a few drums up.
+      const h = rng.chance(0.3) ? rng.range(10, 13) : rng.range(2, 7);
+      const col = new THREE.Mesh(ruinColumnGeometry(h, k * 10 + c), rock);
+      col.position.set(x, gy - 0.6, z);
+      col.rotation.set(rng.range(-0.06, 0.06), rng.range(0, Math.PI), rng.range(-0.06, 0.06));
+      col.castShadow = col.receiveShadow = true;
+      col.updateMatrix();
+      col.matrixAutoUpdate = false;
+      group.add(col);
+      colliders.push({ x, z, r: 1.9, u, lat });
+    }
+  }
+
+  // Jungle: three tree shapes, one instanced mesh each.
+  const VARIANTS = 3;
+  const lists: THREE.Matrix4[][] = [[], [], []];
+  const q = new THREE.Quaternion();
+  const e = new THREE.Euler();
+  const v = new THREE.Vector3();
+  const sc = new THREE.Vector3();
+  for (let i = 0; i < 420; i++) {
+    const u = rng.float();
+    const lat = rng.sign() * rng.range(TRACK_HALF_WIDTH + 26, 330);
+    track.frame(u, p, tng, right);
+    const x = p.x + right.x * lat;
+    const z = p.z + right.z * lat;
+    const gy = terrainHeight(track, x, z);
+    if (gy < liquid + 1.5 || blocked(x, z, u)) continue;
+    const s = rng.range(0.8, 1.35);
+    e.set(rng.range(-0.08, 0.08), rng.range(0, Math.PI * 2), rng.range(-0.08, 0.08));
+    lists[i % VARIANTS].push(new THREE.Matrix4().compose(v.set(x, gy - 0.5, z), q.setFromEuler(e), sc.set(s, s * rng.range(0.85, 1.2), s)));
+    if (Math.abs(lat) < 200) colliders.push({ x, z, r: 1.1 * s, u, lat });
+  }
+  const leaves = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 });
+  for (let k = 0; k < VARIANTS; k++) {
+    const mesh = new THREE.InstancedMesh(treeGeometry(31 + k * 7), leaves, lists[k].length);
+    lists[k].forEach((m, i) => mesh.setMatrixAt(i, m));
+    mesh.computeBoundingSphere();
+    mesh.castShadow = mesh.receiveShadow = true;
+    group.add(mesh);
+  }
 }

@@ -36,6 +36,104 @@ export interface HorizonTheme {
   dustDevils: boolean;
 }
 
+/** A gorge section: the ground is raised to a plateau around (x, z) so the course cuts through rock. */
+export interface Canyon {
+  x: number;
+  z: number;
+  r: number;
+  height: number;
+}
+
+/** A round dip in the ground (lake bed under the liquid level, or just a hollow). */
+export interface Basin {
+  x: number;
+  z: number;
+  r: number;
+  /** Ground height at the bottom (m). */
+  floor: number;
+}
+
+/**
+ * Natural ground generator per planet. Every kind shares the canyons and basins; the kind picks the
+ * relief (dune sea, alpine ridges, grass plains with mesas, coastal lowlands).
+ */
+export interface TerrainTheme {
+  kind: 'dunes' | 'alpine' | 'plains' | 'coast';
+  basins: readonly Basin[];
+  /** Volcanic cone with a crater (coast kind only uses it, but any kind may). */
+  volcano: { x: number; z: number; r: number; height: number } | null;
+  /** Sea side: the ground drops under the liquid where nx * x + nz * z exceeds d. */
+  coast: { nx: number; nz: number; d: number } | null;
+  /** Distant mountain wall around the course: height (m) reached 2.5 km beyond the course's outer edge. */
+  rim: number;
+}
+
+/** Visual liquid level. Physics hovers over max(ground, level), so pods skim it like solid ground. */
+export interface LiquidTheme {
+  kind: 'ice' | 'methane' | 'sea';
+  level: number;
+  /** Linear albedo (ice, sea) or glow colour (methane). */
+  color: RGB;
+  /** Deep / far tint. */
+  deep: RGB;
+}
+
+/** Linear albedos and knobs for the shared procedural surface shader (./surface). */
+export interface SurfaceTheme {
+  /** Strata colours from soft to hard bands. */
+  rock: readonly [RGB, RGB, RGB];
+  /** Loose ground (sand, snow, grass, ash) and its darker variant. */
+  ground: RGB;
+  groundDark: RGB;
+  /** Packed racing bed. */
+  bed: RGB;
+  /** Patches on flat open ground (grass tufts, moss, wind-polished ice), with coverage 0..1. */
+  cover: RGB;
+  coverAmount: number;
+  /** Wind ripple strength (1 = Tatooine sand). */
+  ripple: number;
+  /** Grain glint strength (1 = sand, more for snow crystals) and tint. */
+  glint: number;
+  glintColor: RGB;
+  /** Strata banding contrast (1 = sandstone, low for granite and basalt). */
+  strata: number;
+}
+
+export interface SkyTheme {
+  zenith: RGB;
+  horizon: RGB;
+  /** Below-horizon tint (seen past the terrain's edge and in the IBL from below). */
+  ground: RGB;
+  /** Forward-scattering glow around the sun and the HDR disc colour. */
+  glow: RGB;
+  disc: RGB;
+  /** Optional second sun (Tatoo II): direction, glow and disc. */
+  sun2: { dir: readonly [number, number, number]; glow: RGB; disc: RGB } | null;
+}
+
+export interface LightTheme {
+  sun: number;
+  sunIntensity: number;
+  /** Second fill light along sky.sun2 (ignored without a second sun). */
+  sun2: number;
+  sun2Intensity: number;
+  hemiSky: number;
+  hemiGround: number;
+  hemiIntensity: number;
+  /** Image-based lighting strength. */
+  env: number;
+  fogDensity: number;
+}
+
+/** Start area: Mos Espa (Tatooine only) or a smaller paddock of grandstands and flags. */
+export interface VenueTheme {
+  kind: 'mos-espa' | 'paddock';
+  /** Stand tier tones, trim and wall colours (vertex colours over the plaster texture). */
+  tones: readonly number[];
+  trim: number;
+  wall: number;
+}
+
 export interface Theme {
   /** Stable: horizon dressing. */
   horizon: HorizonTheme;
@@ -43,7 +141,20 @@ export interface Theme {
   fogColor: number;
   /** Stable: unit direction toward the main sun (lighting, flare, horizon shading). */
   sunDir: readonly [number, number, number];
-  // The world layer may add further fields (sky gradient, palettes, surface kind, water, props, life...).
+  terrain: TerrainTheme;
+  liquid: LiquidTheme | null;
+  surface: SurfaceTheme;
+  sky: SkyTheme;
+  light: LightTheme;
+  /** Repulsor dust colour (linear). */
+  dust: RGB;
+  /** Track-side rock set: sandstone hoodoos, ice spires, rock towers, basalt columns and ruins. */
+  props: 'hoodoos' | 'ice' | 'towers' | 'basalt';
+  venue: VenueTheme;
+  /** Tusken snipers on the canyon rims, moisture farms, banthas (Tatooine). */
+  tuskens: boolean;
+  /** Flame geysers erupting from the racing bed (Malastare). */
+  geysers: boolean;
 }
 
 export interface TrackDef {
@@ -57,4 +168,7 @@ export interface TrackDef {
   /** Stable: laps per race. */
   laps: number;
   theme: Theme;
+  /** Closed centreline control points [x, z, floor height] (m), start/finish at the first one. */
+  control: readonly (readonly [number, number, number])[];
+  canyons: readonly Canyon[];
 }

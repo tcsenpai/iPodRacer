@@ -8,13 +8,13 @@
 
 ## 1. Unofficial fan work: no affiliation
 
-*iPodRacer*, "the Game", is an unofficial, non-commercial fan work created by fans as a tribute to the podrace in *Star Wars: Episode I – The Phantom Menace* (1999).
+*iPodRacer*, "the Game", is an unofficial, non-commercial fan work created by fans as a tribute to the podrace in *Star Wars: Episode I – The Phantom Menace* (1999) and to the game *Star Wars Episode I: Racer* (1999).
 
 The Game, this repository and its contributors are **not affiliated with, associated with, endorsed by, sponsored by, licensed by or approved by** Lucasfilm Ltd., The Walt Disney Company, or any of their subsidiaries, affiliates or licensees (together, "the Rights Holders"). The Game is not an official *Star Wars* product and must not be presented, marketed or perceived as one.
 
 ## 2. Third-party intellectual property
 
-*Star Wars* and all related names, titles, characters, vehicles, starships, places, events, dialogue, designs, logos and indicia, including, without limitation, Anakin Skywalker, Sebulba, Gasgano, Mawhonic, Ody Mandrell, Aldar Beedo, the Dug, Xexto, Gran, Er'Kit and Glymphid species, Tusken Raiders, Jawas, banthas, podracers and the pod makes named in the Game (such as Radon-Ulzer, Collor Pondrat Plug-F Mammoth, Ord Pedrovia, GPE-3130, Exelbrok and Manta RamAir), the sandcrawler, moisture vaporators, Tatooine, Mos Espa and the Boonta Eve Classic, are trademarks and/or copyrighted works of **Lucasfilm Ltd.** and/or **The Walt Disney Company**. All rights in them are reserved by their respective owners.
+*Star Wars* and all related names, titles, characters, vehicles, starships, places, events, dialogue, designs, logos and indicia, including, without limitation, Anakin Skywalker, Sebulba, Gasgano, Mawhonic, Ody Mandrell, Aldar Beedo, Ben Quadinaros, Teemto Pagalies, Ratts Tyerell, Elan Mak, Neva Kee, Dud Bolt, Boles Roor, Ark 'Bumpy' Roose, Clegg Holdfast, Ebe Endocott, Bozzie Baranta, Wan Sandage, the game *Star Wars Episode I: Racer* and its circuits, the planets Ando Prime, Malastare and Baroonda, the Dug, Xexto, Gran, Er'Kit and Glymphid species, Tusken Raiders, Jawas, banthas, podracers and the pod makes named in the Game (such as Radon-Ulzer, Collor Pondrat Plug-F Mammoth, Ord Pedrovia, GPE-3130, Exelbrok and Manta RamAir), the sandcrawler, moisture vaporators, Tatooine, Mos Espa and the Boonta Eve Classic, are trademarks and/or copyrighted works of **Lucasfilm Ltd.** and/or **The Walt Disney Company**. All rights in them are reserved by their respective owners.
 
 The contributors **claim no ownership** of, and no right to license, any of that property. Its use in the Game is limited to:
 
@@ -135,13 +135,13 @@ By playing, copying, hosting, modifying or distributing the Game you agree that:
 
 ## 1. Opera amatoriale non ufficiale: nessuna affiliazione
 
-*iPodRacer*, "il Gioco", è un'opera amatoriale non ufficiale e senza scopo di lucro, realizzata da fan come omaggio alla corsa di sgusci di *Star Wars: Episodio I – La minaccia fantasma* (1999).
+*iPodRacer*, "il Gioco", è un'opera amatoriale non ufficiale e senza scopo di lucro, realizzata da fan come omaggio alla corsa di sgusci di *Star Wars: Episodio I – La minaccia fantasma* (1999) e al gioco *Star Wars Episode I: Racer* (1999).
 
 Il Gioco, questo repository e i suoi contributori **non sono affiliati, associati, approvati, sponsorizzati, concessi in licenza né autorizzati** da Lucasfilm Ltd., The Walt Disney Company o da loro controllate, affiliate o licenziatarie (insieme, "i Titolari dei diritti"). Il Gioco non è un prodotto ufficiale di *Star Wars* e non deve essere presentato, promosso o percepito come tale.
 
 ## 2. Proprietà intellettuale di terzi
 
-*Star Wars* e tutti i nomi, titoli, personaggi, veicoli, astronavi, luoghi, eventi, dialoghi, design, loghi e segni distintivi correlati, tra cui, a titolo esemplificativo, Anakin Skywalker, Sebulba, Gasgano, Mawhonic, Ody Mandrell, Aldar Beedo, le specie Dug, Xexto, Gran, Er'Kit e Glymphid, i Predoni Tusken, i Jawa, i bantha, gli sgusci (podracer) e i modelli citati nel Gioco (come Radon-Ulzer, Collor Pondrat Plug-F Mammoth, Ord Pedrovia, GPE-3130, Exelbrok e Manta RamAir), il sandcrawler, i vaporatori, Tatooine, Mos Espa e la Boonta Eve Classic, sono marchi e/o opere protette da diritto d'autore di **Lucasfilm Ltd.** e/o **The Walt Disney Company**. Tutti i diritti sono riservati ai rispettivi titolari.
+*Star Wars* e tutti i nomi, titoli, personaggi, veicoli, astronavi, luoghi, eventi, dialoghi, design, loghi e segni distintivi correlati, tra cui, a titolo esemplificativo, Anakin Skywalker, Sebulba, Gasgano, Mawhonic, Ody Mandrell, Aldar Beedo, Ben Quadinaros, Teemto Pagalies, Ratts Tyerell, Elan Mak, Neva Kee, Dud Bolt, Boles Roor, Ark 'Bumpy' Roose, Clegg Holdfast, Ebe Endocott, Bozzie Baranta, Wan Sandage, il gioco *Star Wars Episode I: Racer* e i suoi circuiti, i pianeti Ando Prime, Malastare e Baroonda, le specie Dug, Xexto, Gran, Er'Kit e Glymphid, i Predoni Tusken, i Jawa, i bantha, gli sgusci (podracer) e i modelli citati nel Gioco (come Radon-Ulzer, Collor Pondrat Plug-F Mammoth, Ord Pedrovia, GPE-3130, Exelbrok e Manta RamAir), il sandcrawler, i vaporatori, Tatooine, Mos Espa e la Boonta Eve Classic, sono marchi e/o opere protette da diritto d'autore di **Lucasfilm Ltd.** e/o **The Walt Disney Company**. Tutti i diritti sono riservati ai rispettivi titolari.
 
 I contributori **non rivendicano alcuna titolarità** né alcun diritto di concedere in licenza tali proprietà. Il loro uso nel Gioco è limitato a:
 

@@ -41,7 +41,8 @@ export class CameraRig {
 
   constructor(
     readonly camera: THREE.PerspectiveCamera,
-    private track: Track,
+    /** Swapped by main when a new course is built (the rigs outlive worlds). */
+    public track: Track,
   ) {}
 
   setShot(shot: Shot): void {

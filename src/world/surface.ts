@@ -1,14 +1,17 @@
 // Shared procedural surface for the ground and every rock: a MeshStandardMaterial patched with
 // onBeforeCompile, so three's lighting, shadows, fog and logarithmic depth chunks stay untouched and
 // only the albedo, roughness and normal are replaced by world-space procedural detail.
-// - Rock: sandstone strata (world-Y bands warped by noise), vertical joint cracks, chunky + fine bumps.
-// - Sand: wind ripples at two scales (fbm-warped), grain speckle, sun glints.
-// - Terrain: slope blend sand -> rock (30 to 40 degrees) and a packed track bed from a per-vertex mask.
+// - Rock: strata (world-Y bands warped by noise), vertical joint cracks, chunky + fine bumps.
+// - Loose ground (sand, snow, grass, ash): wind ripples at two scales (fbm-warped), grain speckle,
+//   glints, patches of cover (grass, moss, ice crust) on flat open ground.
+// - Terrain: slope blend ground -> rock (30 to 40 degrees) and a packed track bed from a per-vertex mask.
+// Colours and knobs come from the planet's SurfaceTheme (uniforms per material, one shared program).
 // All noise is 3D or world-planar, so there is no UV stretching on cliffs (no triplanar seams either),
 // and every octave fades out once a pixel covers it, which keeps distant ground from shimmering.
 // Also exports a small CPU 3D value noise used to sculpt rock geometry consistently.
 import * as THREE from 'three';
 import { SUN_DIRECTION } from './sky';
+import type { SurfaceTheme } from './theme';
 
 // ---------------------------------------------------------------------------------------------------
 // CPU side: 3D value noise for mesh displacement (deterministic, matches nothing on the GPU on purpose:
@@ -135,6 +138,18 @@ vec4 sfNoised(vec3 x) {
  */
 const SURFACE_GLSL = /* glsl */ `
 uniform vec3 uSfSun;
+uniform vec3 uSfRock0;
+uniform vec3 uSfRock1;
+uniform vec3 uSfRock2;
+uniform vec3 uSfSand;
+uniform vec3 uSfSandDark;
+uniform vec3 uSfBed;
+uniform vec3 uSfCover;
+uniform float uSfCoverAmount;
+uniform float uSfRipple;
+uniform float uSfGlint;
+uniform vec3 uSfGlintColor;
+uniform float uSfStrata;
 varying vec3 vSfPos;
 varying vec3 vSfNormal;
 #ifdef SURFACE_TERRAIN
@@ -179,13 +194,6 @@ float sfGlint(vec3 p, vec3 n, vec3 v, float fp) {
   return smoothstep(0.975, 0.995, dot(m, normalize(v + uSfSun))) * dotMask * fade;
 }
 
-const vec3 SF_RUST = vec3(0.33, 0.15, 0.075);
-const vec3 SF_OCHRE = vec3(0.5, 0.3, 0.15);
-const vec3 SF_CREAM = vec3(0.64, 0.5, 0.34);
-const vec3 SF_SAND = vec3(0.62, 0.45, 0.28);
-const vec3 SF_SAND_DARK = vec3(0.5, 0.34, 0.2);
-const vec3 SF_BED = vec3(0.42, 0.31, 0.21);
-
 SfSample sfSurface(vec3 p, vec3 n, vec3 v, float fp, float bed) {
   SfSample s;
   // Broad variation (about 60 m and 12 m) shared by both materials: breaks up tiling at a distance.
@@ -210,12 +218,13 @@ SfSample sfSurface(vec3 p, vec3 n, vec3 v, float fp, float bed) {
     float yA = y * (1.0 / 6.5);
     float iA = floor(yA);
     float tA = mix(sfHash11(iA), sfHash11(iA + 1.0), smoothstep(0.8, 1.0, yA - iA));
-    rockCol = mix(mix(SF_RUST, SF_OCHRE, smoothstep(0.0, 0.5, tA)), SF_CREAM, smoothstep(0.55, 1.0, tA));
+    rockCol = mix(mix(uSfRock0, uSfRock1, smoothstep(0.0, 0.5, tA)), uSfRock2, smoothstep(0.55, 1.0, tA));
     float yB = y * (1.0 / 1.4) + w.x * 1.7;
     float iB = floor(yB);
     float hB = mix(sfHash11(iB + 41.0), sfHash11(iB + 42.0), smoothstep(0.78, 1.0, yB - iB));
-    rockCol *= 0.8 + 0.34 * hB;
-    rockCol *= 1.0 + sfFade(fp, 0.35) * 0.07 * sin(y * 19.0 + w.x * 9.0);
+    // Band contrast scales with uSfStrata: full on sandstone, faint on granite and basalt.
+    rockCol *= 1.0 + (0.34 * hB - 0.2) * uSfStrata;
+    rockCol *= 1.0 + sfFade(fp, 0.35) * 0.07 * uSfStrata * sin(y * 19.0 + w.x * 9.0);
     // Desert varnish: dark streaks running down the faces.
     rockCol *= 1.0 - 0.22 * smoothstep(0.55, 0.85, sfNoise(p * vec3(0.22, 0.03, 0.22)));
 
@@ -231,7 +240,7 @@ SfSample sfSurface(vec3 p, vec3 n, vec3 v, float fp, float bed) {
       if (f4 > 0.0) rockGrad += sfNoised(p * 12.5 + 5.1).yzw * (0.014 * 12.5 * f4);
     }
     // Harder beds stand out as ledges: a groove at every thin band boundary.
-    rockGrad.y += sfFade(fp, 1.4) * (0.25 + 0.35 * hB) * cos(6.2831853 * yB);
+    rockGrad.y += sfFade(fp, 1.4) * (0.25 + 0.35 * hB) * (0.3 + 0.7 * uSfStrata) * cos(6.2831853 * yB);
 
     // Joint cracks, stretched vertically like weathered sandstone joints.
     float crack = 0.0;
@@ -251,12 +260,12 @@ SfSample sfSurface(vec3 p, vec3 n, vec3 v, float fp, float bed) {
   float sandRough = 0.0;
   float glint = 0.0;
   if (rockW < 0.998) {
-    sandCol = mix(SF_SAND, SF_SAND_DARK, big * 0.85);
+    sandCol = mix(uSfSand, uSfSandDark, big * 0.85);
     // Wind ripples across the prevailing wind (same frame as the dune ridges), warped by fbm. The
     // profile is asymmetric (gentle stoss, steep lee) and the gradient is analytic.
     vec2 q = p.xz;
     float warp = sfNoise2(q * 0.11) * 0.65 + sfNoise2(q * 0.31 + 5.0) * 0.35;
-    float ripple = 1.0 - bed * 0.85;
+    float ripple = (1.0 - bed * 0.85) * uSfRipple;
     const vec2 WD1 = vec2(0.8, 0.6);
     const vec2 WD2 = vec2(0.55, 0.835);
     float r1 = sfFade(fp, 0.6) * ripple;
@@ -277,11 +286,14 @@ SfSample sfSurface(vec3 p, vec3 n, vec3 v, float fp, float bed) {
     // Grain speckle up close.
     float fg = sfFade(fp, 0.05);
     if (fg > 0.0) sandCol *= 1.0 + (sfNoise(p * 28.0) - 0.5) * 0.2 * fg;
+    // Patches on open flat ground (grass, moss, ice crust): two noise scales, never on the bed.
+    float cover = smoothstep(0.45, 0.6, sfNoise(p * 0.05) * 0.6 + sfNoise(p * 0.23) * 0.4) * uSfCoverAmount * (1.0 - bed) * smoothstep(0.85, 0.95, n.y);
+    sandCol = mix(sandCol, uSfCover * (0.8 + 0.4 * sfNoise(p * 1.7)), cover);
     // Packed bed: darker, compacted, smoother to the touch (lower roughness).
-    sandCol = mix(sandCol, SF_BED * (0.88 + 0.24 * big), bed * 0.85);
+    sandCol = mix(sandCol, uSfBed * (0.88 + 0.24 * big), bed * 0.85);
     sandRough = 0.95 - bed * 0.13 + (u1.x - 0.5) * 0.08;
     vec3 nb = normalize(n - (sandGrad - n * dot(n, sandGrad)));
-    glint = sfGlint(p, nb, v, fp) * (1.0 - bed * 0.7);
+    glint = sfGlint(p, nb, v, fp) * (1.0 - bed * 0.7) * (1.0 - cover) * uSfGlint;
   }
 
   s.albedo = mix(sandCol, rockCol, rockW);
@@ -344,55 +356,75 @@ const SURFACE_NORMAL = /* glsl */ `
 const SURFACE_GLINT = /* glsl */ `
 {
   float sfLit = dot(reflectedLight.directDiffuse, vec3(0.3333)) / max(dot(diffuseColor.rgb, vec3(0.3333)), 0.05);
-  reflectedLight.directSpecular += vec3(1.0, 0.92, 0.78) * min(sf.glint * sfLit * 1.6, 1.0);
+  reflectedLight.directSpecular += uSfGlintColor * min(sf.glint * sfLit * 1.6, 1.0);
 }
 `;
 
 const SUN_UNIFORM = { value: SUN_DIRECTION };
 
-function inject(src: string, chunk: string, code: string, before = false): string {
+/** Insert `code` after (or before) one of three's `#include <chunk>` lines; throws if the chunk is gone. */
+export function inject(src: string, chunk: string, code: string, before = false): string {
   const token = `#include <${chunk}>`;
   // Fail loudly on a three upgrade that renames a chunk instead of silently losing the surface.
   if (!src.includes(token)) throw new Error(`surface shader: missing ${token}`);
   return src.replace(token, before ? `${code}\n${token}` : `${token}\n${code}`);
 }
 
-function patch(shader: THREE.WebGLProgramParametersWithUniforms): void {
-  shader.uniforms.uSfSun = SUN_UNIFORM;
-  let vs = shader.vertexShader;
-  vs = inject(vs, 'common', SURFACE_VERTEX_PARS);
-  vs = inject(vs, 'worldpos_vertex', SURFACE_VERTEX);
-  shader.vertexShader = vs;
-  let fs = shader.fragmentShader;
-  fs = inject(fs, 'common', SURFACE_GLSL);
-  fs = inject(fs, 'color_fragment', SURFACE_SAMPLE);
-  fs = inject(fs, 'roughnessmap_fragment', 'roughnessFactor *= sf.rough;');
-  fs = inject(fs, 'normal_fragment_maps', SURFACE_NORMAL);
-  fs = inject(fs, 'lights_fragment_end', SURFACE_GLINT);
-  shader.fragmentShader = fs;
-}
-
-function surfaceMaterial(terrain: boolean): THREE.MeshStandardMaterial {
+function surfaceMaterial(terrain: boolean, theme: SurfaceTheme): THREE.MeshStandardMaterial {
   // Colour, roughness and normal all come from the shader; the material keeps white / 1 as neutral
   // multipliers so lights, IBL, shadows and fog run through three's standard path.
   const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, metalness: 0 });
   if (terrain) mat.defines = { SURFACE_TERRAIN: '' };
-  mat.onBeforeCompile = patch;
+  // One program for every planet (same cache key); the palette lives in this material's own uniforms.
+  const palette = {
+    uSfSun: SUN_UNIFORM,
+    uSfRock0: { value: new THREE.Color().setRGB(...theme.rock[0]) },
+    uSfRock1: { value: new THREE.Color().setRGB(...theme.rock[1]) },
+    uSfRock2: { value: new THREE.Color().setRGB(...theme.rock[2]) },
+    uSfSand: { value: new THREE.Color().setRGB(...theme.ground) },
+    uSfSandDark: { value: new THREE.Color().setRGB(...theme.groundDark) },
+    uSfBed: { value: new THREE.Color().setRGB(...theme.bed) },
+    uSfCover: { value: new THREE.Color().setRGB(...theme.cover) },
+    uSfCoverAmount: { value: theme.coverAmount },
+    uSfRipple: { value: theme.ripple },
+    uSfGlint: { value: theme.glint },
+    uSfGlintColor: { value: new THREE.Color().setRGB(...theme.glintColor) },
+    uSfStrata: { value: theme.strata },
+  };
+  mat.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, palette);
+    let vs = shader.vertexShader;
+    vs = inject(vs, 'common', SURFACE_VERTEX_PARS);
+    vs = inject(vs, 'worldpos_vertex', SURFACE_VERTEX);
+    shader.vertexShader = vs;
+    let fs = shader.fragmentShader;
+    fs = inject(fs, 'common', SURFACE_GLSL);
+    fs = inject(fs, 'color_fragment', SURFACE_SAMPLE);
+    fs = inject(fs, 'roughnessmap_fragment', 'roughnessFactor *= sf.rough;');
+    fs = inject(fs, 'normal_fragment_maps', SURFACE_NORMAL);
+    fs = inject(fs, 'lights_fragment_end', SURFACE_GLINT);
+    shader.fragmentShader = fs;
+  };
   mat.customProgramCacheKey = () => (terrain ? 'surface-terrain' : 'surface-rock');
+  // Cached across worlds: Engine.setScene must not dispose it with the old scene.
+  mat.userData.shared = true;
   return mat;
 }
 
-let terrainMat: THREE.MeshStandardMaterial | null = null;
-let rockMat: THREE.MeshStandardMaterial | null = null;
+// Keyed by the theme's palette object: every TrackDef owns one, built once per session.
+const terrainMats = new Map<SurfaceTheme, THREE.MeshStandardMaterial>();
+const rockMats = new Map<SurfaceTheme, THREE.MeshStandardMaterial>();
 
 /** Ground material. Geometry must carry an `aBed` float attribute (1 on the packed track bed). */
-export function terrainMaterial(): THREE.MeshStandardMaterial {
-  terrainMat ??= surfaceMaterial(true);
-  return terrainMat;
+export function terrainMaterial(theme: SurfaceTheme): THREE.MeshStandardMaterial {
+  let mat = terrainMats.get(theme);
+  if (!mat) terrainMats.set(theme, (mat = surfaceMaterial(true, theme)));
+  return mat;
 }
 
-/** Rock material for props, rubble (works with InstancedMesh) and anything sculpted from sandstone. */
-export function rockMaterial(): THREE.MeshStandardMaterial {
-  rockMat ??= surfaceMaterial(false);
-  return rockMat;
+/** Rock material for props, rubble (works with InstancedMesh) and anything sculpted from the planet's rock. */
+export function rockMaterial(theme: SurfaceTheme): THREE.MeshStandardMaterial {
+  let mat = rockMats.get(theme);
+  if (!mat) rockMats.set(theme, (mat = surfaceMaterial(false, theme)));
+  return mat;
 }

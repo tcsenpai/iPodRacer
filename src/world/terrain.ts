@@ -1,29 +1,41 @@
-// Tatooine dune sea: one height function shared by two meshes.
+// Planet ground: one height function per course (relief picked by the TrackDef's terrain theme), shared
+// by two meshes.
 // - Corridor: a fine strip that follows the track, where the camera actually is. Rings every 2.5 m;
 //   a dense band of columns (2.5 m) covers the bed, banks and canyon walls, and coarser columns on every
 //   other ring reach out to the backdrop seam. Split into chunks along the track so frustum culling
 //   drops what is behind the camera.
-// - Backdrop: a coarse 14 km grid for dunes and mesas on the horizon; under the corridor its triangles
+// - Backdrop: a coarse 14 km grid for the relief on the horizon; under the corridor its triangles
 //   are dropped (or sunk) so the fine strip shows.
 // All colour and small-scale relief come from the shared procedural surface shader (./surface); the
-// meshes only carry positions, normals and a per-vertex track-bed mask.
+// meshes only carry positions, normals and a per-vertex track-bed mask. Liquids (frozen lakes, methane,
+// sea) are separate flat meshes (./world); the solid ground under them is what these meshes show.
 import * as THREE from 'three';
 import { smoothstep } from '../core/rng';
 import { fbm2, noise2, ridge2 } from './noise';
 import { noise3, terrainMaterial } from './surface';
-import { CANYONS, TRACK_HALF_WIDTH, type Track, type TrackHit } from './track';
+import type { Canyon } from './theme';
+import { TRACK_HALF_WIDTH, type Track, type TrackHit } from './track';
 
 const _hit: TrackHit = { dist: 0, floorY: 0, u: 0 };
 
-/** 0 in open desert, 1 deep inside a canyon section. */
-function rockiness(x: number, z: number): number {
+/** 0 in open country, 1 deep inside a canyon section. */
+function rockiness(canyons: readonly Canyon[], x: number, z: number): number {
   let rocky = 0;
-  for (const c of CANYONS) rocky = Math.max(rocky, smoothstep(c.r, c.r * 0.6, Math.hypot(x - c.x, z - c.z)));
+  for (const c of canyons) rocky = Math.max(rocky, smoothstep(c.r, c.r * 0.6, Math.hypot(x - c.x, z - c.z)));
   return rocky;
 }
 
-/** Natural ground height before the track is carved in. */
-function natural(x: number, z: number): number {
+/** Gorge plateaus raised around the canyon centres (the track bed is carved through them later). */
+function canyonPlateau(canyons: readonly Canyon[], x: number, z: number, plateau: number): number {
+  for (const c of canyons) {
+    const d = Math.hypot(x - c.x, z - c.z);
+    plateau = Math.max(plateau, smoothstep(c.r, c.r * 0.7, d) * c.height * (0.85 + 0.3 * noise2(x / 90, z / 90, 31)));
+  }
+  return plateau;
+}
+
+/** Tatooine: dunes across the prevailing wind, terraced mesas. */
+function dunes(canyons: readonly Canyon[], x: number, z: number): number {
   const broad = fbm2(x / 2600, z / 2600, 4, 3) * 34;
   // Dunes: ridges across the prevailing wind (rotated frame), stronger away from the rocky areas.
   const wx = x * 0.8 + z * 0.6;
@@ -32,25 +44,95 @@ function natural(x: number, z: number): number {
   const dunes = (ridge2(wx / 170, wz / 640, 5) * 0.75 + ridge2(wx / 60, wz / 220, 6) * 0.25) * 14 * duneMask;
   // Mesas: terraced plateaus with steep cliffs.
   const m = fbm2(x / 1900 + 4.1, z / 1900 - 2.3, 4, 21);
-  let plateau = smoothstep(0.58, 0.61, m) * 60 + smoothstep(0.68, 0.7, m) * 45;
-  for (const c of CANYONS) {
-    const d = Math.hypot(x - c.x, z - c.z);
-    plateau = Math.max(plateau, smoothstep(c.r, c.r * 0.7, d) * c.height * (0.85 + 0.3 * noise2(x / 90, z / 90, 31)));
-  }
-  return broad + dunes + plateau;
+  const plateau = smoothstep(0.58, 0.61, m) * 60 + smoothstep(0.68, 0.7, m) * 45;
+  return broad + dunes + canyonPlateau(canyons, x, z, plateau);
 }
 
-/** Final ground height: the natural terrain with the track bed and its banks carved in. */
-export function groundHeight(track: Track, x: number, z: number): number {
-  const h = natural(x, z);
+/** Ando Prime: snowfields between sharp alpine ridges, wind-packed drifts. */
+function alpine(canyons: readonly Canyon[], x: number, z: number): number {
+  const broad = 22 + fbm2(x / 3000, z / 3000, 4, 103) * 44;
+  // Squared ridged noise gives knife-edge crests with broad flanks; the mask keeps wide valleys open.
+  const mask = smoothstep(0.5, 0.72, fbm2(x / 2400 + 1.7, z / 2400 - 3.1, 3, 105));
+  const r1 = ridge2(x / 520, z / 760, 107);
+  const r2 = ridge2(x / 190, z / 240, 109);
+  const ridges = (r1 * r1 * 0.75 + r2 * r2 * 0.25) * 150 * mask;
+  const wx = x * 0.8 + z * 0.6;
+  const wz = -x * 0.6 + z * 0.8;
+  const drifts = ridge2(wx / 90, wz / 300, 111) * 3;
+  return broad + drifts + canyonPlateau(canyons, x, z, ridges);
+}
+
+/** Malastare: flat grass plains with gentle swells and flat-topped table mountains. */
+function plains(canyons: readonly Canyon[], x: number, z: number): number {
+  const broad = 10 + fbm2(x / 2800, z / 2800, 4, 203) * 18;
+  const swells = fbm2(x / 400, z / 400, 3, 205) * 5;
+  const m = fbm2(x / 1700 + 2.3, z / 1700 - 1.1, 4, 207);
+  const mesas = smoothstep(0.6, 0.62, m) * 70 + smoothstep(0.69, 0.71, m) * 40;
+  return broad + swells + canyonPlateau(canyons, x, z, mesas);
+}
+
+/** Baroonda: jungle lowland mounds, black lava ridges breaking through. */
+function coast(canyons: readonly Canyon[], x: number, z: number): number {
+  const broad = 8 + fbm2(x / 2400, z / 2400, 4, 303) * 22;
+  const mounds = fbm2(x / 220, z / 220, 3, 305) * 7;
+  const lr = ridge2(x / 600, z / 600, 307);
+  const lava = lr * lr * lr * 40 * smoothstep(0.5, 0.7, fbm2(x / 1800, z / 1800, 2, 309));
+  return broad + mounds + canyonPlateau(canyons, x, z, lava);
+}
+
+/** Natural ground height before the track is carved in. */
+function natural(track: Track, x: number, z: number): number {
+  const t = track.def.theme.terrain;
+  const canyons = track.canyons;
+  if (t.kind === 'dunes') return dunes(canyons, x, z);
+  let h = t.kind === 'alpine' ? alpine(canyons, x, z) : t.kind === 'plains' ? plains(canyons, x, z) : coast(canyons, x, z);
+  if (t.rim > 0) {
+    // Mountain wall closing the valley: starts 400 m past the farthest centreline point.
+    const dc = Math.hypot(x - track.center.x, z - track.center.z);
+    const w = smoothstep(track.radius + 400, track.radius + 2900, dc);
+    if (w > 0) h += t.rim * w * (0.55 + 0.45 * ridge2(x / 900, z / 900, 401));
+  }
+  const v = t.volcano;
+  if (v) {
+    const d = Math.hypot(x - v.x, z - v.z);
+    if (d < v.r) {
+      // Concave cone with lava gullies; the crater (a tenth of the base radius) sinks the summit by
+      // 12% of the height, a bowl below the rim the cone reaches there.
+      const rc = v.r * 0.1;
+      // Gullies fade out toward the summit so the crater rim stays level (the lava lake sits inside it).
+      const gully = 1 + (noise2(x / 140, z / 140, 311) - 0.5) * 0.2 * smoothstep(rc * 1.5, rc * 3, d);
+      const k = Math.max(d, rc) / v.r;
+      const top = v.height * (1 - k) ** 1.6 - (d < rc ? v.height * 0.12 * (1 - (d / rc) ** 2) : 0);
+      h = Math.max(h, 8 + top * gully);
+    }
+  }
+  const c = t.coast;
+  if (c) h += (-30 - h) * smoothstep(-150, 650, c.nx * x + c.nz * z - c.d);
+  for (const b of t.basins) {
+    const d = Math.hypot(x - b.x, z - b.z);
+    if (d < b.r) h += (b.floor - h) * smoothstep(b.r, b.r * 0.45, d);
+  }
+  return h;
+}
+
+/** Solid ground with the track bed and its banks carved in (what the terrain meshes show). */
+export function terrainHeight(track: Track, x: number, z: number): number {
+  const h = natural(track, x, z);
   track.nearest(x, z, _hit, 160);
   if (_hit.dist === Infinity) return h;
-  // Inside canyons the banks are steep walls; in the open the bed blends into the dunes.
-  const bank = THREE.MathUtils.lerp(70, 18, rockiness(x, z));
+  // Inside canyons the banks are steep walls; in the open the bed blends into the natural ground.
+  const bank = THREE.MathUtils.lerp(70, 18, rockiness(track.canyons, x, z));
   const t = smoothstep(TRACK_HALF_WIDTH, TRACK_HALF_WIDTH + bank, _hit.dist);
   // Gentle ruts and bumps on the bed itself.
   const bed = _hit.floorY + (noise2(x / 25, z / 25, 41) - 0.5) * 0.8;
   return bed + (h - bed) * t;
+}
+
+/** What pods, cameras and props stand on: the carved ground, or the liquid surface where it is higher. */
+export function groundHeight(track: Track, x: number, z: number): number {
+  const h = terrainHeight(track, x, z);
+  const liquid = track.def.theme.liquid;
+  return liquid && h < liquid.level ? liquid.level : h;
 }
 
 const RING_STEP = 2.5; // m between corridor rings
@@ -88,7 +170,7 @@ function corridor(track: Track, halfWidth: number): THREE.BufferGeometry[] {
   for (let r = 0; r <= rings; r++) {
     track.frame((r % rings) / rings, p, tng, right);
     // The dense band widens inside canyons so it spans the whole wall, not just the bank.
-    const fine = THREE.MathUtils.lerp(80, 104, rockiness(p.x, p.z));
+    const fine = THREE.MathUtils.lerp(80, 104, rockiness(track.canyons, p.x, p.z));
     const even = r % 2 === 0;
     const first = even ? 0 : OUTER_SIDE; // row slot of this ring's first vertex
     const last = even ? FULL : OUTER_SIDE + FINE;
@@ -101,7 +183,7 @@ function corridor(track: Track, halfWidth: number): THREE.BufferGeometry[] {
         lat[k] = Math.sign(c) * (fine + (halfWidth - fine) * s ** 1.6);
       }
     }
-    for (let k = first; k < last; k++) hgt[k] = groundHeight(track, p.x + right.x * lat[k], p.z + right.z * lat[k]);
+    for (let k = first; k < last; k++) hgt[k] = terrainHeight(track, p.x + right.x * lat[k], p.z + right.z * lat[k]);
     const spacing = fine / FINE_SIDE;
     for (let k = first; k < last; k++) {
       let x = p.x + right.x * lat[k];
@@ -234,13 +316,13 @@ function backdrop(track: Track, size: number, segs: number, corridorWidth: numbe
   const hit: TrackHit = { dist: 0, floorY: 0, u: 0 };
   for (let j = 0; j < n; j++) {
     for (let i = 0; i < n; i++) {
-      const x = (i / segs - 0.5) * size + 250;
-      const z = (j / segs - 0.5) * size + 1100;
+      const x = (i / segs - 0.5) * size + track.center.x;
+      const z = (j / segs - 0.5) * size + track.center.z;
       track.nearest(x, z, hit, corridorWidth + 100);
       const k = j * n + i;
       inside[k] = hit.dist < corridorWidth * 0.8 ? 1 : 0;
       const sink = hit.dist < corridorWidth * 0.95 ? 6 : 0;
-      pos.set([x, groundHeight(track, x, z) - sink, z], k * 3);
+      pos.set([x, terrainHeight(track, x, z) - sink, z], k * 3);
     }
   }
   const idx: number[] = [];
@@ -262,7 +344,7 @@ function backdrop(track: Track, size: number, segs: number, corridorWidth: numbe
 }
 
 export function buildTerrain(track: Track): THREE.Group {
-  const mat = terrainMaterial();
+  const mat = terrainMaterial(track.def.theme.surface);
   const CORRIDOR = 240;
   const group = new THREE.Group();
   for (const geo of [...corridor(track, CORRIDOR), backdrop(track, 14000, 256, CORRIDOR)]) {

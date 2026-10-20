@@ -7,19 +7,20 @@
 import * as THREE from 'three';
 import type { PodControls } from '../core/input';
 import { clamp, damp } from '../core/rng';
+import type { PilotDef, PodStats } from './roster';
 import { createPodracer, type PodLivery, type PodracerModel } from '../models/podracer';
 import type { Collider } from '../world/props';
 import { groundHeight } from '../world/terrain';
 import { TRACK_HALF_WIDTH, type Track, type TrackHit } from '../world/track';
 
-/** Top speed on full throttle (m/s, ~775 km/h) and with overdrive (~1025 km/h). */
+/**
+ * Reference top speed on full throttle (m/s, ~775 km/h) and with overdrive (~1025 km/h): the baseline
+ * pod's values, used by the camera FOV and the HUD. Each pod derives its own from its PodStats.
+ */
 export const VMAX = 215;
 export const VBOOST = 285;
-const THRUST = 55;
-const DRAG = THRUST / (VMAX * VMAX);
-const BOOST_THRUST = DRAG * VBOOST * VBOOST;
-/** Extra drag on loose sand: terminal speed drops to ~65%. */
-const SAND_DRAG = DRAG * 1.37;
+/** Extra drag on loose sand relative to the pod's own drag: terminal speed drops to ~65%. */
+const SAND_DRAG_RATIO = 1.37;
 const BRAKE_DECEL = 70;
 const HOVER = 2.4;
 const GRAVITY = 26;
@@ -36,9 +37,13 @@ const COOLDOWN_SHORT = 3;
 const COOLDOWN_LONG = 6;
 const COOLDOWN_OVERHEAT = 15;
 
-/** Yaw rate available at speed v (rad/s): agile when slow, committed when flat out. */
-export function turnRate(v: number): number {
-  return 2.2 - 1.35 * clamp(v / VMAX, 0, 1.3);
+/**
+ * Yaw rate available at speed v (rad/s): agile when slow, committed when flat out. The optional pod
+ * stats scale it by the pod's turn multiplier and measure speed against its own top speed.
+ */
+export function turnRate(v: number, stats?: PodStats): number {
+  const top = stats ? stats.topSpeed : VMAX;
+  return (2.2 - 1.35 * clamp(v / top, 0, 1.3)) * (stats ? stats.turn : 1);
 }
 
 export interface PodSpec {
@@ -96,8 +101,17 @@ export class Pod {
   readonly health: [number, number] = [1, 1];
   /** Repair droids at work this frame (throttle capped, boost off). */
   repairing = false;
-  /** Multiplier on damage taken (difficulty for the player, toughness for rivals). */
-  dmgScale = 1;
+  /** Multiplier on damage taken: baseDurability times the difficulty (player) or rival toughness, set by the race. */
+  dmgScale: number;
+  /** The pilot's own durability stat, the base the race multiplies. */
+  readonly baseDurability: number;
+  readonly stats: PodStats;
+  /** Visual and caption data (the PilotDef itself). */
+  readonly spec: PodSpec;
+  /** Per-pod physics constants derived from stats once, so the step stays allocation and division light. */
+  private readonly thrustMax: number;
+  private readonly drag: number;
+  private readonly boostThrust: number;
   alive = true;
   /** Out of the race for good (rivals after a second crash). */
   out = false;
@@ -133,8 +147,19 @@ export class Pod {
   private nearIdx = -1;
   private nearCooldown = 0;
 
-  constructor(readonly spec: PodSpec, readonly player: boolean) {
-    this.model = createPodracer(spec.livery);
+  constructor(
+    readonly pilot: PilotDef,
+    readonly player: boolean,
+  ) {
+    this.spec = pilot;
+    this.stats = pilot.stats;
+    this.baseDurability = this.dmgScale = pilot.stats.durability;
+    // Terminal speed is where thrust equals quadratic drag; overdrive keeps the reference VBOOST / VMAX ratio.
+    this.thrustMax = pilot.stats.thrust;
+    this.drag = pilot.stats.thrust / (pilot.stats.topSpeed * pilot.stats.topSpeed);
+    const boostTop = pilot.stats.topSpeed * (VBOOST / VMAX);
+    this.boostThrust = this.drag * boostTop * boostTop;
+    this.model = createPodracer(pilot.livery);
   }
 
   get speed(): number {
@@ -195,7 +220,7 @@ export class Pod {
     if (wantBoost && !this.boosting) w.events.boost(this);
     if (!wantBoost && this.boosting) this.startCooldown(this.heat > 0.5 ? COOLDOWN_LONG : COOLDOWN_SHORT);
     this.boosting = wantBoost;
-    if (this.boosting) this.heat += dt * 0.21;
+    if (this.boosting) this.heat += dt * 0.21 * this.stats.cooling;
     else this.heat -= dt * (this.overheated ? 0.1 : 0.11);
     if (this.heat >= 1 && !this.overheated) {
       this.overheated = true;
@@ -209,21 +234,21 @@ export class Pod {
     this.repairing = c.repair && !this.locked;
     if (this.repairing) {
       const i = this.wear[0] >= this.wear[1] ? 0 : 1;
-      this.wear[i] = Math.max(0, this.wear[i] - dt * REPAIR_RATE);
+      this.wear[i] = Math.max(0, this.wear[i] - dt * REPAIR_RATE * this.stats.repair);
     }
 
     // Longitudinal: thrust along the heading against drag; air brakes add drag.
     const fx = Math.sin(this.heading);
     const fz = -Math.cos(this.heading);
     const throttle = this.repairing ? Math.min(c.throttle, REPAIR_THROTTLE) : c.throttle;
-    let thrust = this.locked ? 0 : throttle * (this.boosting ? BOOST_THRUST : THRUST);
+    let thrust = this.locked ? 0 : throttle * (this.boosting ? this.boostThrust : this.thrustMax);
     // A hurt engine pushes less, and the pair pulls toward the weak side: the pilot must counter-steer.
     const tL = 1 - this.wear[0] * 0.55;
     const tR = 1 - this.wear[1] * 0.55;
     thrust *= ((tL + tR) / 2) * (this.overheated ? 0.75 : 1);
     if (this.airborne) thrust *= 0.4;
     const sand = this.offTrack;
-    const drag = (DRAG + SAND_DRAG * sand) * v * v + c.brake * BRAKE_DECEL * clamp(v / 40, 0, 1);
+    const drag = this.drag * (1 + SAND_DRAG_RATIO * sand) * v * v + c.brake * BRAKE_DECEL * clamp(v / 40, 0, 1);
     let vf = this.vel.x * fx + this.vel.z * fz;
     let vl = this.vel.x * -fz + this.vel.z * fx; // lateral (+ = right)
     vf += (thrust - drag * Math.sign(vf || 1)) * dt;
@@ -236,7 +261,7 @@ export class Pod {
     this.tilt += (c.tilt - this.tilt) * damp(7, dt);
     const tight = 1 + c.brake * 0.55 + Math.abs(this.tilt) * 0.15;
     const pull = this.locked ? 0 : (tL - tR) * throttle * 0.55;
-    const targetYaw = c.steer * turnRate(Math.abs(vf)) * tight * (this.airborne ? 0.35 : 1) + pull;
+    const targetYaw = c.steer * turnRate(Math.abs(vf), this.stats) * tight * (this.airborne ? 0.35 : 1) + pull;
     this.yawRate += (targetYaw - this.yawRate) * damp(6, dt);
     this.heading += this.yawRate * dt;
     // Rotate velocity with the heading so speed is kept through the turn (minus the slide).

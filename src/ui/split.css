@@ -1,0 +1,51 @@
+/* Split-screen HUD: two stacked half-screen containers (createSplitContainers) each holding a compact Hud.
+   Every rule is scoped to .hud-split or .hud.compact, so the single-player HUD is untouched. */
+.hud-split { position: absolute; left: 0; right: 0; height: 50%; z-index: 2; pointer-events: none; overflow: hidden; }
+.hud-split.top { top: 0; }
+.hud-split.bottom { bottom: 0; }
+/* Divider between the two views; also hides the spare pixel row the engine leaves on odd heights. */
+.hud-split.bottom::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 2px; z-index: 3; background: rgba(0, 0, 0, 0.9); }
+/* The base HUD sizes these against the viewport; inside a half-screen view they follow the view. */
+.hud-split .hud-lb { height: 12%; }
+.hud-split .hud-caption { bottom: calc(13% + 26px); }
+
+/* Player tag at the top centre, coloured like that player's minimap dot. */
+.hud-tag { position: absolute; left: 50%; top: 18px; transform: translateX(-50%); font-size: 16px; font-weight: 900; font-style: italic; letter-spacing: 0.3em;
+  padding: 3px 8px 3px 14px; border: 1px solid currentColor; background: rgba(6, 5, 4, 0.45); color: #ffe14a; }
+.hud-tag.s1 { color: #5ad1ff; }
+
+/* Compact: half-height views. `.hud.compact` prefixes outrank the base rules and the narrow-screen media query. */
+.hud.compact .hud-tag { top: 10px; font-size: 13px; }
+.hud.compact .hud-tl { left: 16px; top: 12px; gap: 3px; }
+.hud.compact .hud-pos-n { font-size: 46px; }
+.hud.compact .hud-pos-of { font-size: 16px; }
+.hud.compact .hud-pos .hud-label { margin-top: 6px; }
+.hud.compact .hud-label { font-size: 9px; }
+.hud.compact .hud-lap b { font-size: 20px; }
+.hud.compact .hud-lap-of { font-size: 12px; }
+.hud.compact .hud-times { min-width: 140px; margin-top: 2px; gap: 0; }
+.hud.compact .hud-clock { font-size: 12px; }
+.hud.compact .hud-row.total .hud-clock { font-size: 14px; }
+
+.hud.compact .hud-map { right: 14px; top: 12px; width: 110px; height: 110px; }
+
+.hud.compact .hud-speed { right: 16px; bottom: 12px; row-gap: 3px; column-gap: 6px; }
+.hud.compact .hud-speed-n { font-size: 44px; }
+.hud.compact .hud-unit { margin-bottom: 4px; }
+.hud.compact .hud-bar { grid-template-columns: 52px 140px; gap: 8px; }
+.hud.compact .hud-bar-track { height: 7px; }
+.hud.compact .hud-repair, .hud.compact .hud-over { font-size: 10px; }
+
+.hud.compact .hud-wrong { top: 18%; font-size: 24px; border-width: 2px; padding: 4px 16px; }
+
+.hud.compact .hud-banner { font-size: 40px; }
+.hud.compact .hud-banner.k-countdown { font-size: 84px; }
+.hud.compact .hud-banner.k-go { font-size: 90px; }
+.hud.compact .hud-banner.k-info { font-size: 26px; }
+.hud.compact .hud-banner.k-trick, .hud.compact .hud-banner.k-warn { font-size: 28px; }
+.hud.compact .hud-tricks { top: 46%; gap: 2px; }
+.hud.compact .hud-trick { font-size: 15px; }
+
+.hud.compact .hud-caption { border-left-width: 3px; padding: 4px 0 4px 12px; }
+.hud.compact .cap-title { font-size: 22px; }
+.hud.compact .cap-sub { font-size: 13px; }

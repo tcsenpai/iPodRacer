@@ -1,13 +1,15 @@
-// The living world around the course: Mos Espa grandstands packed with fans at the start/finish, hangars
-// and workshops by the grid, pennant lines over the track, moisture farms, a Jawa sandcrawler on a dune,
-// Tusken camps on the canyon rims, bantha herds that scatter from passing pods and a distant Mos Espa
-// skyline. Everything is code geometry merged per material (about 13 draw calls in total); motion (wind,
-// cheering, walking) lives in vertex shaders, only the banthas keep a little CPU state.
+// The living world around the course. Tatooine (venue 'mos-espa'): Mos Espa grandstands packed with
+// fans at the start/finish, hangars and workshops by the grid, pennant lines over the track, moisture
+// farms, a Jawa sandcrawler on a dune, Tusken camps on the canyon rims, bantha herds that scatter from
+// passing pods and a distant Mos Espa skyline. Other planets ('paddock'): a smaller start area of
+// grandstands in the planet's stone, crowd, towers, flags and pennant lines. Everything is code
+// geometry merged per material (about 13 draw calls in total); motion (wind, cheering, walking) lives
+// in vertex shaders, only the banthas keep a little CPU state.
 import * as THREE from 'three';
 import { Rng, clamp, damp, smoothstep } from '../core/rng';
 import type { Collider } from './props';
 import { groundHeight } from './terrain';
-import { CANYONS, type Track, type TrackHit } from './track';
+import type { Track, TrackHit } from './track';
 import {
   ATLAS,
   Builder,
@@ -54,9 +56,6 @@ const STAND_FRONT = 64; // lateral offset of the front parapet
 const STAND_DEPTH = 0.8 + TIERS * TIER_DEPTH + 1.2;
 const ROYAL_SIDE = -1; // the Hutt's box sits on the left of the start line
 
-const ADOBE = [0xcdb08a, 0xc4a27c, 0xbb9870, 0xd3b994];
-const TRIM = 0xe4d6ba;
-const WALL = 0xbf9c74;
 const DARK = 0x1c1611;
 const IRON = 0x5c5650;
 const WOOD = 0x5a4632;
@@ -154,7 +153,15 @@ export function buildLife(track: Track): Life {
     track.frame(hit.u, p, tg, rt);
     colliders.push({ x, z, r, u: hit.u, lat: (x - p.x) * rt.x + (z - p.z) * rt.z });
   };
-  const inCanyon = (x: number, z: number, k: number) => CANYONS.some((c) => Math.hypot(x - c.x, z - c.z) < c.r * k);
+  const inCanyon = (x: number, z: number, k: number) => track.canyons.some((c) => Math.hypot(x - c.x, z - c.z) < c.r * k);
+  const theme = track.def.theme;
+  // Tatooine dresses the full Mos Espa venue and its desert life; other planets get the paddock.
+  const mosEspa = theme.venue.kind === 'mos-espa';
+  const ADOBE = theme.venue.tones;
+  const TRIM = theme.venue.trim;
+  const WALL = theme.venue.wall;
+  const SECTIONS = mosEspa ? 8 : 5;
+  const STAND_HALF = (SECTIONS * SECTION) / 2;
 
   const clothTex = clothAtlas();
   const cloth = clothMaterial(uniforms, clothTex);
@@ -195,8 +202,8 @@ export function buildLife(track: Track): Life {
   };
 
   for (const side of [-1, 1]) {
-    for (let sec = 0; sec < 8; sec++) {
-      const s = -96 + SECTION / 2 + sec * SECTION;
+    for (let sec = 0; sec < SECTIONS; sec++) {
+      const s = -STAND_HALF + SECTION / 2 + sec * SECTION;
       const sp = spot(s, STAND_FRONT, side);
       const g = seat(sp, -SECTION / 2, SECTION / 2, 0, STAND_DEPTH);
       const base = (g.lo + g.hi) / 2;
@@ -213,7 +220,7 @@ export function buildLife(track: Track): Life {
         // Fans on this tier, facing the track (the model faces local +Z, the track is local -Z).
         for (let x = -half + 1.2; x <= half - 1.2; x += 0.82) {
           if (rng.chance(0.13)) continue;
-          if (side === ROYAL_SIDE && k >= 4 && Math.abs(s + side * x) < 11.5) continue;
+          if (mosEspa && side === ROYAL_SIDE && k >= 4 && Math.abs(s + side * x) < 11.5) continue;
           const fx = x + rng.range(-0.12, 0.12);
           const fz = z0 + 0.95 + rng.range(-0.1, 0.1);
           fans.push(wx(sp, fx, fz) - ax, base + top - ay, wz(sp, fx, fz) - az, sp.yaw + Math.PI + rng.range(-0.25, 0.25), rng.range(0.9, 1.12));
@@ -241,12 +248,12 @@ export function buildLife(track: Track): Life {
       }
     }
     // Round towers closing the stand ends, two more rising behind it.
-    for (const s of [-104, 104]) tower(s, STAND_FRONT + 7, side, 5.5, 24);
+    for (const s of [-STAND_HALF - 8, STAND_HALF + 8]) tower(s, STAND_FRONT + 7, side, 5.5, 24);
     for (const s of [-48, 48]) tower(s, STAND_FRONT + STAND_DEPTH + 6, side, 4.5, 27);
   }
 
   // The Hutt's box: a raised block over the upper tiers with a dark viewing gallery, canopy and banners.
-  {
+  if (mosEspa) {
     const sp = spot(0, STAND_FRONT, ROYAL_SIDE);
     const g = seat(sp, -11, 11, 10, 30);
     const base = (g.lo + g.hi) / 2;
@@ -263,8 +270,8 @@ export function buildLife(track: Track): Life {
     flag(sp, 0, 31.5, 20, 7, 2);
   }
 
-  // Hangars and workshops behind the grid (the grid runs to about s = -110).
-  for (const side of [-1, 1]) {
+  // Hangars and workshops behind the grid (Mos Espa only; the grid runs to about s = -110).
+  for (const side of mosEspa ? [-1, 1] : []) {
     for (const s of [-175, -245, -315]) {
       const sp = spot(s, 72, side);
       const g = seat(sp, -18, 18, 0, 28);
@@ -391,50 +398,52 @@ export function buildLife(track: Track): Life {
   group.add(crowd);
 
   // -------------------------------------------------------------------------------------------------
-  // Moisture vaporators: small farms dotted along the course.
-  const vaps: number[] = [];
-  const vapAt = (x: number, z: number) => {
-    vaps.push(x, groundHeight(track, x, z) - 0.15, z, rng.range(0, Math.PI * 2), rng.range(0.85, 1.2));
-    solid(x, z, 0.9);
-  };
-  for (let n = 0; n < 60; ) {
-    const u = rng.float();
-    const lat = rng.sign() * rng.range(CLEAR + 15, 280);
-    const sp = spot(u * L, lat, 1);
-    // Keep the farms clear of the start complex (hangars at s = -360 up to the pennants at s = +125).
-    if (inCanyon(sp.x, sp.z, 0.9) || Math.abs(((u + 0.5) % 1) - 0.5) * L < 450) continue;
-    const k = rng.int(1, 3);
-    for (let j = 0; j < k; j++) {
-      const a = rng.range(0, Math.PI * 2);
-      const d = j === 0 ? 0 : rng.range(7, 14);
-      const x = sp.x + Math.cos(a) * d;
-      const z = sp.z + Math.sin(a) * d;
-      track.nearest(x, z, hit, 120);
-      if (hit.dist > CLEAR + 5) vapAt(x, z);
+  // Moisture vaporators: small farms dotted along the course (Tatooine).
+  if (mosEspa) {
+    const vaps: number[] = [];
+    const vapAt = (x: number, z: number) => {
+      vaps.push(x, groundHeight(track, x, z) - 0.15, z, rng.range(0, Math.PI * 2), rng.range(0.85, 1.2));
+      solid(x, z, 0.9);
+    };
+    for (let n = 0; n < 60; ) {
+      const u = rng.float();
+      const lat = rng.sign() * rng.range(CLEAR + 15, 280);
+      const sp = spot(u * L, lat, 1);
+      // Keep the farms clear of the start complex (hangars at s = -360 up to the pennants at s = +125).
+      if (inCanyon(sp.x, sp.z, 0.9) || Math.abs(((u + 0.5) % 1) - 0.5) * L < 450) continue;
+      const k = rng.int(1, 3);
+      for (let j = 0; j < k; j++) {
+        const a = rng.range(0, Math.PI * 2);
+        const d = j === 0 ? 0 : rng.range(7, 14);
+        const x = sp.x + Math.cos(a) * d;
+        const z = sp.z + Math.sin(a) * d;
+        track.nearest(x, z, hit, 120);
+        if (hit.dist > CLEAR + 5) vapAt(x, z);
+      }
+      n++;
     }
-    n++;
-  }
-  for (const side of [-1, 1]) {
-    for (const s of [-200, -260, -330, 170]) {
-      const sp = spot(s, rng.range(115, 140), side);
-      vapAt(sp.x, sp.z);
+    for (const side of [-1, 1]) {
+      for (const s of [-200, -260, -330, 170]) {
+        const sp = spot(s, rng.range(115, 140), side);
+        vapAt(sp.x, sp.z);
+      }
     }
+    const vapCount = vaps.length / 5;
+    const vapMesh = new THREE.InstancedMesh(vaporatorGeometry(), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.42, metalness: 0.55 }), vapCount);
+    for (let i = 0; i < vapCount; i++) {
+      const k = i * 5;
+      q.setFromAxisAngle(up, vaps[k + 3]);
+      _mat.compose(p.set(vaps[k], vaps[k + 1], vaps[k + 2]), q, sc.setScalar(vaps[k + 4]));
+      vapMesh.setMatrixAt(i, _mat);
+    }
+    vapMesh.computeBoundingSphere();
+    vapMesh.castShadow = vapMesh.receiveShadow = true;
+    group.add(vapMesh);
   }
-  const vapCount = vaps.length / 5;
-  const vapMesh = new THREE.InstancedMesh(vaporatorGeometry(), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.42, metalness: 0.55 }), vapCount);
-  for (let i = 0; i < vapCount; i++) {
-    const k = i * 5;
-    q.setFromAxisAngle(up, vaps[k + 3]);
-    _mat.compose(p.set(vaps[k], vaps[k + 1], vaps[k + 2]), q, sc.setScalar(vaps[k + 4]));
-    vapMesh.setMatrixAt(i, _mat);
-  }
-  vapMesh.computeBoundingSphere();
-  vapMesh.castShadow = vapMesh.receiveShadow = true;
-  group.add(vapMesh);
 
   // -------------------------------------------------------------------------------------------------
-  // Jawa sandcrawler parked on the highest dune crest overlooking the opening straight.
-  {
+  // Jawa sandcrawler parked on the highest dune crest overlooking the opening straight (Tatooine).
+  if (mosEspa) {
     let best = -Infinity;
     let bx = 0;
     let bz = 0;
@@ -475,7 +484,7 @@ export function buildLife(track: Track): Life {
 
   // -------------------------------------------------------------------------------------------------
   // Tusken camps on the canyon rims, overlooking the track below.
-  for (const c of CANYONS) {
+  for (const c of theme.tuskens ? track.canyons : []) {
     let bu = 0;
     let bd = Infinity;
     for (let i = 0; i < 512; i++) {
@@ -545,12 +554,15 @@ export function buildLife(track: Track): Life {
   const herds: Herd[] = [];
   const banthaGeo = banthaGeometry();
   const banthaMat = banthaMaterial(uniforms);
-  for (const [u0, side] of [
-    [0.13, 1],
-    [0.31, -1],
-    [0.57, 1],
-    [0.83, -1],
-  ] as const) {
+  const herdSpots = mosEspa
+    ? ([
+        [0.13, 1],
+        [0.31, -1],
+        [0.57, 1],
+        [0.83, -1],
+      ] as const)
+    : [];
+  for (const [u0, side] of herdSpots) {
     let u = u0;
     let sp = spot(u * L, 175, side);
     for (let tries = 0; tries < 12 && inCanyon(sp.x, sp.z, 1.1); tries++) {
@@ -620,7 +632,7 @@ export function buildLife(track: Track): Life {
 
   // -------------------------------------------------------------------------------------------------
   // Mos Espa on the northern horizon: low-detail domes, blocks and towers that read as a silhouette.
-  {
+  if (mosEspa) {
     const city = new Builder();
     const cx = 700;
     const cz = -4600;

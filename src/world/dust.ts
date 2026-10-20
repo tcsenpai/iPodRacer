@@ -1,4 +1,5 @@
-// Sand kicked up by the engines' repulsors: a pooled point cloud with per-particle alpha (RGBA colours).
+// Ground kicked up by the engines' repulsors (sand, snow, ash): a pooled point cloud with per-particle
+// alpha (RGBA colours), tinted per planet.
 import * as THREE from 'three';
 
 const MAX = 700;
@@ -11,6 +12,8 @@ export class DustTrail {
   private vel = new Float32Array(MAX * 3);
   private age = new Float32Array(MAX).fill(LIFE);
   private next = 0;
+  /** Grain colour (linear); set from the course's `theme.dust` when a world is built. */
+  readonly tint = new THREE.Color().setRGB(0.86, 0.7, 0.5);
 
   constructor() {
     const geo = new THREE.BufferGeometry();
@@ -46,6 +49,7 @@ export class DustTrail {
   update(dt: number): void {
     const drag = Math.exp(-2.2 * dt);
     const c = this.col;
+    const { r, g, b } = this.tint;
     for (let i = 0; i < MAX; i++) {
       const a = (this.age[i] = Math.min(LIFE, this.age[i] + dt));
       const t = a / LIFE;
@@ -53,9 +57,9 @@ export class DustTrail {
         this.vel[i * 3 + k] *= drag;
         this.pos[i * 3 + k] += this.vel[i * 3 + k] * dt;
       }
-      c[i * 4] = 0.86;
-      c[i * 4 + 1] = 0.7;
-      c[i * 4 + 2] = 0.5;
+      c[i * 4] = r;
+      c[i * 4 + 1] = g;
+      c[i * 4 + 2] = b;
       c[i * 4 + 3] = t >= 1 ? 0 : 0.2 * (1 - t) * Math.min(1, t * 8);
     }
     this.points.geometry.attributes.position.needsUpdate = true;

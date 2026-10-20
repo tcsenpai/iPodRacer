@@ -2,9 +2,30 @@
 // plus the event layer: banners, trick popups, cinematic captions and letterbox bars.
 // update() runs every frame, so it only touches the DOM when a displayed value changes and always assigns
 // precomputed strings (digit tables below) instead of formatting new ones.
+// A Hud fills its parent element, so split screen runs one per half-screen container (createSplitContainers)
+// and every banner, trick and caption stays inside its own view.
 import '@fontsource/orbitron/800.css';
 import '@fontsource/orbitron/900.css';
+import './split.css';
 import { onLangChange, t, type StringKey } from '../i18n/i18n';
+
+export interface HudPod {
+  x: number;
+  z: number;
+  player: boolean;
+  alive: boolean;
+  /** Which human drives it in split screen (minimap colour); unset = slot 0. */
+  slot?: 0 | 1;
+}
+
+export interface HudOptions {
+  /** Half-height view: smaller type, smaller minimap, tighter margins. */
+  compact?: boolean;
+  /** Player tag shown at the top centre of the view (e.g. 'P1'); shown as is. */
+  label?: string;
+  /** Player slot of this view: colours the tag like that player's minimap dot. */
+  slot?: 0 | 1;
+}
 
 export interface HudPod {
   x: number;
@@ -55,9 +76,12 @@ const BANNER_SECONDS: Record<BannerKind, number> = {
 };
 
 const MAX_TRICKS = 4;
-/** Minimap edge in CSS pixels (the canvas backing store is scaled by devicePixelRatio). */
+/** Minimap edge in CSS pixels (the canvas backing store is scaled by devicePixelRatio); keep in sync with .hud-map in CSS. */
 const MAP_SIZE = 170;
+const MAP_SIZE_COMPACT = 110;
 const MAP_PAD = 10;
+/** Minimap dot colour per human slot. */
+const SLOT_COLOR: Record<0 | 1, string> = { 0: '#ffe14a', 1: '#5ad1ff' };
 
 // Digit tables: per-frame readouts index these instead of building strings.
 const NUM: readonly string[] = Array.from({ length: 2000 }, (_, i) => String(i));
@@ -154,6 +178,9 @@ export class Hud {
   private readonly captionEl: HTMLDivElement;
   private readonly capTitle: HTMLDivElement;
   private readonly capSub: HTMLDivElement;
+  private readonly offLang: () => void;
+  /** Human slot of this view (draw order and tag colour). */
+  private readonly slot: 0 | 1;
 
   // Last displayed values: the DOM is only written when these change.
   private lastPos = -1;
@@ -172,9 +199,10 @@ export class Hud {
   private lastWrong = false;
   private lastFx = -1;
 
-  constructor(parent: HTMLElement, trackXZ: Float32Array) {
-    this.root = el('div', 'hud');
+  constructor(parent: HTMLElement, trackXZ: Float32Array, opts: HudOptions = {}) {
+    this.root = el('div', opts.compact ? 'hud compact' : 'hud');
     this.play = el('div', 'hud-play');
+    this.slot = opts.slot ?? 0;
 
     // Top left: position, lap, clocks.
     const tl = el('div', 'hud-tl');
@@ -209,7 +237,7 @@ export class Hud {
 
     // Top right: minimap. The track is rasterised once; each frame blits it and draws the pod dots.
     this.dpr = Math.min(2, window.devicePixelRatio || 1);
-    const px = Math.round(MAP_SIZE * this.dpr);
+    const px = Math.round((opts.compact ? MAP_SIZE_COMPACT : MAP_SIZE) * this.dpr);
     this.map = el('canvas', 'hud-map');
     this.map.width = this.map.height = px;
     this.mapCtx = this.map.getContext('2d')!;
@@ -260,6 +288,7 @@ export class Hud {
     this.labels.push([this.wrong, 'race.wrongway']);
 
     this.play.append(tl, this.map, this.speedBox, this.wrong);
+    if (opts.label) this.play.append(el('div', `hud-tag s${this.slot}`, opts.label));
 
     // Event layer.
     const lbTop = el('div', 'hud-lb top');
@@ -274,7 +303,14 @@ export class Hud {
     this.root.append(this.play, lbTop, lbBot, this.bannerEl, this.tricks, this.captionEl);
     parent.appendChild(this.root);
     this.relabel();
-    onLangChange(() => this.relabel());
+    this.offLang = onLangChange(() => this.relabel());
+  }
+
+  /** Detaches the HUD from the DOM and the language listener (one Hud per race and view). */
+  dispose(): void {
+    clearTimeout(this.bannerTimer);
+    this.offLang();
+    this.root.remove();
   }
 
   /** Small caps label whose text follows the language. */
@@ -333,17 +369,18 @@ export class Hud {
     const px = this.map.width;
     g.clearRect(0, 0, px, px);
     g.drawImage(this.mapTrack, 0, 0);
-    // Rivals first, the player on top.
-    for (let pass = 0; pass < 2; pass++) {
+    // Rivals first, then the other human, this view's own player on top.
+    for (let pass = 0; pass < 3; pass++) {
       for (let i = 0; i < pods.length; i++) {
         const p = pods[i];
-        if (p.player !== (pass === 1)) continue;
+        const slot = p.slot ?? 0;
+        if ((p.player ? (slot === this.slot ? 2 : 1) : 0) !== pass) continue;
         const x = this.mapOffX + p.x * this.mapScale;
         const y = this.mapOffZ + p.z * this.mapScale;
         g.beginPath();
         if (p.player) {
           g.arc(x, y, 5 * this.dpr, 0, Math.PI * 2);
-          g.fillStyle = '#ffe14a';
+          g.fillStyle = SLOT_COLOR[slot];
           g.fill();
           g.lineWidth = 1.5 * this.dpr;
           g.strokeStyle = '#000';
@@ -498,4 +535,21 @@ export class Hud {
     this.lastFx = i;
     this.speedBox.style.setProperty('--fx', UNIT[i]);
   }
+}
+
+/**
+ * Two stacked half-screen containers matching the engine's split views (top = view 0 = player 1),
+ * each meant to host one compact Hud. Menus (z-index 5) still cover them.
+ */
+export function createSplitContainers(app: HTMLElement): [HTMLElement, HTMLElement] {
+  removeSplitContainers(app);
+  const top = el('div', 'hud-split top');
+  const bottom = el('div', 'hud-split bottom');
+  app.append(top, bottom);
+  return [top, bottom];
+}
+
+/** Removes the split containers (and any Hud still inside them). */
+export function removeSplitContainers(app: HTMLElement): void {
+  for (const c of app.querySelectorAll(':scope > .hud-split')) c.remove();
 }

@@ -8,6 +8,9 @@
   --display: 'Orbitron', 'Eurostile', 'Segoe UI', sans-serif;
   /* Readable over bright desert sand: a tight dark edge plus a soft halo. */
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.9), 0 0 10px rgba(0, 0, 0, 0.55);
+  /* Local players in split screen: tags, cursors and result rows. */
+  --p1: #ffe14a;
+  --p2: #5ad1ff;
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; background: #000; overflow: hidden; color: var(--ink); font-family: var(--font); }
@@ -93,6 +96,59 @@ html, body { margin: 0; height: 100%; background: #000; overflow: hidden; color:
 .podium .you.name { font-weight: 700; }
 .podium .dnf { opacity: 0.55; }
 .podium .dnf.num { color: var(--red); opacity: 0.8; }
+
+/* Duel results: one place box per player. */
+.place-box { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.place-who { font-family: var(--display); font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase; }
+.place-box.s1 .place-who { color: var(--p1); }
+.place-box.s2 .place-who { color: var(--p2); }
+.podium .s2 { color: var(--p2); background: rgba(90, 209, 255, 0.1); }
+.tag { display: inline-block; margin-left: 8px; font-family: var(--display); font-size: 9px; font-weight: 800; letter-spacing: 0.12em; padding: 1px 5px; border-radius: 2px; color: #120c02; vertical-align: middle; }
+.tag.t1 { background: var(--p1); }
+.tag.t2 { background: var(--p2); }
+.unlock { border: 1px solid var(--gold); padding: 10px 14px; background: rgba(255, 225, 74, 0.08); display: flex; flex-direction: column; gap: 4px; animation: badge 0.9s ease-in-out infinite alternate; }
+.unlock-head { font-family: var(--display); font-size: 13px; font-weight: 800; letter-spacing: 0.3em; text-transform: uppercase; color: var(--gold); }
+.unlock-name { font-size: 15px; }
+
+/* Circuit and pilot selection */
+.overlay.select { flex-direction: column; }
+.select-panel { width: min(1180px, 96vw); max-height: 94vh; overflow: auto; display: flex; flex-direction: column; gap: 16px; }
+.select-title { margin: 0; font-family: var(--display); font-weight: 800; font-style: italic; font-size: 30px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--gold); text-shadow: var(--shadow); }
+.track-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
+.track-card { text-align: left; font: inherit; color: var(--ink); cursor: pointer; background: var(--bg); border: 1px solid rgba(255, 179, 71, 0.3); padding: 18px 18px 14px;
+  display: flex; flex-direction: column; gap: 8px; backdrop-filter: blur(6px); transition: border-color 0.12s, transform 0.12s, background 0.12s; }
+.track-card.active { border-color: var(--gold); background: rgba(40, 28, 10, 0.82); transform: translateY(-4px); box-shadow: 0 0 22px rgba(255, 180, 40, 0.3); }
+.track-planet { font-family: var(--display); font-size: 11px; letter-spacing: 0.35em; text-transform: uppercase; color: var(--amber); }
+.track-name { font-family: var(--display); font-weight: 800; font-style: italic; font-size: 20px; letter-spacing: 0.04em; text-transform: uppercase; color: #fff; }
+.track-desc { font-size: 14px; line-height: 1.4; opacity: 0.85; min-height: 4.2em; }
+.track-laps { font-family: var(--display); font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; opacity: 0.7; }
+
+/* Keyboard up/down in ui/menus.ts reads the live column count, so this may reflow freely. */
+.pilot-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
+.pilot-card { position: relative; cursor: pointer; background: var(--bg); border: 1px solid rgba(255, 179, 71, 0.25); padding: 12px 12px 10px; display: flex; flex-direction: column; gap: 4px;
+  backdrop-filter: blur(6px); transition: border-color 0.12s, box-shadow 0.12s; }
+.pilot-card.c1 { border-color: var(--p1); box-shadow: inset 0 0 0 1px var(--p1); }
+.pilot-card.c2 { border-color: var(--p2); box-shadow: inset 0 0 0 1px var(--p2); }
+.pilot-card.c1.c2 { border-color: var(--p1); box-shadow: inset 0 0 0 1px var(--p1), 0 0 0 2px var(--p2); }
+.pilot-card.r1 { background: rgba(255, 225, 74, 0.16); }
+.pilot-card.r2 { background: rgba(90, 209, 255, 0.16); }
+.pilot-card.locked { opacity: 0.45; filter: grayscale(1); }
+.pilot-card.locked.c1, .pilot-card.locked.c2 { opacity: 0.75; }
+.pilot-name { font-family: var(--display); font-weight: 800; font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase; color: #fff; }
+.pilot-sub { font-size: 12px; opacity: 0.7; line-height: 1.25; min-height: 2.5em; }
+.pilot-stats { display: grid; grid-template-columns: max-content 1fr; gap: 3px 8px; align-items: center; margin-top: 4px; }
+.stat-label { font-family: var(--display); font-size: 8px; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.75; }
+.stat-bar { height: 6px; background: rgba(0, 0, 0, 0.55); border: 1px solid rgba(242, 230, 201, 0.2); transform: skewX(-20deg); overflow: hidden; }
+.stat-fill { height: 100%; transform-origin: 0 50%; background: linear-gradient(90deg, var(--amber), var(--gold)); }
+.pilot-lock { margin-top: 4px; font-size: 11px; line-height: 1.3; color: var(--amber); }
+.pilot-tags { position: absolute; top: -8px; right: 8px; display: flex; gap: 4px; }
+.pilot-tags .tag { margin: 0; visibility: hidden; }
+.pilot-card.c1 .tag.t1, .pilot-card.c2 .tag.t2 { visibility: visible; }
+.pilot-card.r1 .tag.t1, .pilot-card.r2 .tag.t2 { animation: badge 0.9s ease-in-out infinite alternate; }
+
+/* Loading veil while a planet is generated (above the menus). */
+.loading { position: absolute; inset: 0; z-index: 9; display: grid; place-items: center; background: rgba(4, 3, 2, 0.88); font-family: var(--display); font-size: 18px;
+  letter-spacing: 0.3em; text-transform: uppercase; color: var(--gold); text-shadow: var(--shadow); animation: blink 1.2s ease-in-out infinite; }
 
 /* ---------- HUD ---------- */
 .hud { position: absolute; inset: 0; z-index: 2; pointer-events: none; overflow: hidden; font-family: var(--display); color: var(--ink); text-shadow: var(--shadow); user-select: none; }
@@ -197,4 +253,5 @@ html, body { margin: 0; height: 100%; background: #000; overflow: hidden; color:
   .hud-speed-n { font-size: 56px; }
   .hud-bar { grid-template-columns: 60px 150px; }
   .hud-map { width: 120px; height: 120px; }
+  .pilot-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }

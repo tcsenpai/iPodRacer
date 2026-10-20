@@ -6,7 +6,8 @@ import { clamp } from '../core/rng';
 import type { DifficultyProfile } from '../core/settings';
 import type { Collider } from '../world/props';
 import { TRACK_HALF_WIDTH, type Track } from '../world/track';
-import { VMAX, turnRate, type Pod } from './pod';
+import { turnRate, type Pod } from './pod';
+import type { PodStats } from './roster';
 
 /** Deceleration the pilot plans with (m/s^2): below what brakes + drag deliver, for a safety margin. */
 const BRAKE_PLAN = 45;
@@ -29,10 +30,10 @@ export interface PilotTraits {
   flame?: boolean;
 }
 
-/** Highest speed at which a curve of radius r can be held: fixed point of v = turnRate(v) * r. */
-function cornerSpeed(r: number): number {
-  let v = VMAX;
-  for (let i = 0; i < 6; i++) v = (v + turnRate(v) * r) / 2;
+/** Highest speed at which this pod can hold a curve of radius r: fixed point of v = turnRate(v) * r. */
+function cornerSpeed(r: number, stats: PodStats): number {
+  let v = stats.topSpeed;
+  for (let i = 0; i < 6; i++) v = (v + turnRate(v, stats) * r) / 2;
   return v;
 }
 
@@ -59,6 +60,8 @@ export class Pilot {
     const c = pod.ctl;
     if (!pod.alive) return;
     const v = pod.speed;
+    // Everything speed related is relative to the pod's own top speed, so each pilot drives its own pod.
+    const top = pod.stats.topSpeed;
     this.wander += dt;
     const len = track.length;
 
@@ -126,25 +129,25 @@ export class Pilot {
     for (let d = 0; d < horizon; d += 20) {
       const k = Math.abs(track.curvatureAt(pod.u + d / len));
       if (k < 1e-5) continue;
-      const vc = cornerSpeed(1 / k) * skill;
+      const vc = cornerSpeed(1 / k, pod.stats) * skill;
       limit = Math.min(limit, Math.sqrt(vc * vc + 2 * BRAKE_PLAN * d));
     }
     // Rubber band: rivals far behind the player find a little extra.
     const gap = playerProgress - pod.progress;
     const band = assist ? 0 : clamp(gap * 6, 0, 1) * diff.catchUp;
-    const cruise = VMAX * (assist ? 0.9 : diff.pace * this.traits.pace + band);
+    const cruise = top * (assist ? 0.9 : diff.pace * this.traits.pace + band);
     const target = Math.min(limit, cruise);
     // Thrust balance: terminal speed scales with sqrt(throttle).
-    c.throttle = v < target - 3 ? 1 : clamp((target / VMAX) ** 2, 0.2, 1);
+    c.throttle = v < target - 3 ? 1 : clamp((target / top) ** 2, 0.2, 1);
     // Brake only for corners: above cruise pace (after a boost) just lift.
     c.brake = v > limit + 10 ? clamp((v - limit) / 30, 0, 1) : 0;
 
     // Boost on a long clear straight, until the engines get hot.
-    if (!assist && this.boostHold <= 0 && pod.boostCooldown <= 0 && limit > VMAX * 1.25 && pod.heat < 0.4 && Math.random() < diff.boost * dt) this.boostHold = 2 + Math.random() * 2;
+    if (!assist && this.boostHold <= 0 && pod.boostCooldown <= 0 && limit > top * 1.25 && pod.heat < 0.4 && Math.random() < diff.boost * dt) this.boostHold = 2 + Math.random() * 2;
     this.boostHold -= dt;
     // Repairs on the straights once an engine is badly hurt, never while boosting.
-    c.repair = pod.damage > 0.45 && limit > VMAX * 1.05;
-    c.boost = this.boostHold > 0 && pod.heat < 0.8 && limit > VMAX * 1.1 && c.brake === 0 && !c.repair;
+    c.repair = pod.damage > 0.45 && limit > top * 1.05;
+    c.boost = this.boostHold > 0 && pod.heat < 0.8 && limit > top * 1.1 && c.brake === 0 && !c.repair;
 
     // Flame vent: only with ramming allowed (not on the amateur circuit), against the player alongside.
     this.flameCooldown -= dt;

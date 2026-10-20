@@ -1,33 +1,11 @@
-// The race course: a closed spline over the dune sea, with a fast nearest-point query used by the
-// terrain (to carve the track bed and canyons) and later by gameplay (progress, off-track, laps).
+// The race course: a closed spline over the planet's ground, with a fast nearest-point query used by the
+// terrain (to carve the track bed and canyons) and by gameplay (progress, off-track, laps). The layout
+// (control points, canyons) comes from the TrackDef (./tracks).
 import * as THREE from 'three';
-
-/** Control points [x, z, floor height] of the Boonta-style loop (metres). */
-const CONTROL: [number, number, number][] = [
-  [0, 0, 8],
-  [900, -300, 10],
-  [1900, -200, 14],
-  [2700, 500, 20],
-  [2900, 1500, 18],
-  [2400, 2400, 12],
-  [1500, 2800, 10],
-  [700, 2300, 6],
-  [400, 1500, 4],
-  [-500, 1200, 6],
-  [-1300, 1800, 10],
-  [-2200, 1300, 14],
-  [-2400, 300, 12],
-  [-1700, -600, 9],
-  [-800, -500, 8],
-];
+import type { Canyon, TrackDef } from './theme';
 
 /** Half width of the flattened track bed (m). */
 export const TRACK_HALF_WIDTH = 34;
-/** Centres of the canyon sections: the plateau is raised here so the track cuts through rock. */
-export const CANYONS: { x: number; z: number; r: number; height: number }[] = [
-  { x: 2850, z: 1000, r: 650, height: 95 },
-  { x: -1850, z: 1550, r: 600, height: 80 },
-];
 
 const SAMPLE = 4; // metres between polyline samples
 const CELL = 100; // spatial hash cell size (m)
@@ -42,6 +20,9 @@ export interface TrackHit {
 }
 
 export class Track {
+  readonly def: TrackDef;
+  /** Centres of the gorge sections: the plateau is raised here so the track cuts through rock. */
+  readonly canyons: readonly Canyon[];
   readonly curve: THREE.CatmullRomCurve3;
   readonly length: number;
   private pts: Float32Array; // x, y, z per sample
@@ -49,10 +30,19 @@ export class Track {
   readonly count: number;
   /** Signed horizontal curvature per sample (1/m, + = bending right), smoothed over ~40 m. */
   readonly curvature: Float32Array;
+  /** Centre of the control points' bounding box: the terrain backdrop and the horizon centre on it. */
+  readonly center: { x: number; z: number };
+  /** Farthest centreline point from `center` (m). */
+  readonly radius: number;
 
-  constructor() {
+  constructor(def: TrackDef) {
+    this.def = def;
+    this.canyons = def.canyons;
+    const xs = def.control.map((c) => c[0]);
+    const zs = def.control.map((c) => c[1]);
+    this.center = { x: (Math.min(...xs) + Math.max(...xs)) / 2, z: (Math.min(...zs) + Math.max(...zs)) / 2 };
     this.curve = new THREE.CatmullRomCurve3(
-      CONTROL.map(([x, z, y]) => new THREE.Vector3(x, y, z)),
+      def.control.map(([x, z, y]) => new THREE.Vector3(x, y, z)),
       true,
       'centripetal',
     );
@@ -60,14 +50,17 @@ export class Track {
     this.count = Math.ceil(this.length / SAMPLE);
     this.pts = new Float32Array(this.count * 3);
     const p = new THREE.Vector3();
+    let radius = 0;
     for (let i = 0; i < this.count; i++) {
       this.curve.getPointAt(i / this.count, p);
       this.pts.set([p.x, p.y, p.z], i * 3);
+      radius = Math.max(radius, Math.hypot(p.x - this.center.x, p.z - this.center.z));
       const key = this.cellKey(Math.floor(p.x / CELL), Math.floor(p.z / CELL));
       const list = this.grid.get(key);
       if (list) list.push(i);
       else this.grid.set(key, [i]);
     }
+    this.radius = radius;
     // Heading change across ±5 samples, divided by the arc between them.
     this.curvature = new Float32Array(this.count);
     const n = this.count;
