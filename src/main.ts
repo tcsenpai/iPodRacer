@@ -15,6 +15,7 @@ import { ANAKIN_LIVERY } from './models/podracer';
 import { Hud } from './ui/hud';
 import { Menus } from './ui/menus';
 import { DustTrail } from './world/dust';
+import { buildLife } from './world/life';
 import { buildProps } from './world/props';
 import { buildDesertSky } from './world/sky';
 import { buildTerrain } from './world/terrain';
@@ -28,7 +29,9 @@ const scene = new THREE.Scene();
 const sky = buildDesertSky(scene, engine.renderer);
 const track = new Track();
 const props = buildProps(track);
-scene.add(buildTerrain(track), props.group);
+const life = buildLife(track);
+const colliders = [...props.colliders, ...life.colliders];
+scene.add(buildTerrain(track), props.group, life.group);
 const dust = new DustTrail();
 const fx = new Fx();
 scene.add(dust.points, fx.group);
@@ -45,6 +48,7 @@ rig.mode = settings.camera;
 // Title backdrop: Anakin's pod idling on the grid, the camera circling it.
 const showcase = new Pod({ name: 'Anakin Skywalker', species: 'Human', make: 'Radon-Ulzer 620C', livery: ANAKIN_LIVERY }, true);
 showcase.place(track, -80 / track.length, 0, 0);
+const showcaseList = [showcase];
 
 type State = 'title' | 'race' | 'paused' | 'results';
 let state: State = 'title';
@@ -70,7 +74,7 @@ function startRace(): void {
   menus.hide();
   input.clearPresses();
   rig.mode = settings.camera;
-  race = new Race({ scene, engine, track, colliders: props.colliders, hud, audio, fx, dust, rig }, settings.difficulty);
+  race = new Race({ scene, engine, track, colliders, hud, audio, fx, dust, rig }, settings.difficulty);
   state = 'race';
 }
 
@@ -144,6 +148,7 @@ function frame(now: number): void {
     dust.update(real * (race?.timeScale ?? 1));
     fx.update(real * (race?.timeScale ?? 1), engine.renderer.domElement.clientHeight);
     rig.update(real, race?.player ?? showcase);
+    life.update(real, engine.camera, race?.pods ?? showcaseList);
   }
   sky.update(engine.camera, race?.player.pos ?? showcase.pos);
   engine.render(time);

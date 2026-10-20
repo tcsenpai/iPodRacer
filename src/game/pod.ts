@@ -28,6 +28,9 @@ const POD_RADIUS = 3;
 /** Hard outer limit from the centreline (m): the corridor terrain mesh ends at 240. */
 const OUTER_LIMIT = 150;
 const ROLL_TIME = 0.75;
+/** Wear repaired per second while the repair button is held, and the throttle cap meanwhile. */
+const REPAIR_RATE = 0.16;
+const REPAIR_THROTTLE = 0.55;
 
 /** Yaw rate available at speed v (rad/s): agile when slow, committed when flat out. */
 export function turnRate(v: number): number {
@@ -74,13 +77,18 @@ export class Pod {
   /** Yaw: forward is (sin h, 0, -cos h), so steering right increases it. */
   heading = 0;
   yawRate = 0;
-  readonly ctl: PodControls = { steer: 0, throttle: 0, brake: 0, boost: false, tilt: 0 };
+  readonly ctl: PodControls = { steer: 0, throttle: 0, brake: 0, boost: false, tilt: 0, repair: false };
   /** Engines accept no thrust (countdown, finished cool-down). */
   locked = true;
   heat = 0;
   overheated = false;
   boosting = false;
-  damage = 0;
+  /** Wear per engine (0 = pristine, 1 = destroyed): index 0 left, 1 right. Either at 1 is a crash. */
+  readonly wear: [number, number] = [0, 0];
+  /** 1 - wear, for the model (kept as a field to avoid per-frame tuples). */
+  readonly health: [number, number] = [1, 1];
+  /** Repair droids at work this frame (throttle capped, boost off). */
+  repairing = false;
   /** Multiplier on damage taken (difficulty for the player, toughness for rivals). */
   dmgScale = 1;
   alive = true;
@@ -185,13 +193,23 @@ export class Pod {
     }
     this.heat = clamp(this.heat, 0, 1);
     if (this.overheated && this.heat < 0.35) this.overheated = false;
-    this.damage = Math.max(0, this.damage - dt * 0.012);
+    // Repair (Episode I Racer): the droid arms patch the worst engine while the pilot eases off.
+    this.repairing = c.repair && !this.locked;
+    if (this.repairing) {
+      const i = this.wear[0] >= this.wear[1] ? 0 : 1;
+      this.wear[i] = Math.max(0, this.wear[i] - dt * REPAIR_RATE);
+      this.boosting = false;
+    }
 
     // Longitudinal: thrust along the heading against drag; air brakes add drag.
     const fx = Math.sin(this.heading);
     const fz = -Math.cos(this.heading);
-    let thrust = this.locked ? 0 : c.throttle * (this.boosting ? BOOST_THRUST : THRUST);
-    thrust *= (1 - this.damage * 0.3) * (this.overheated ? 0.75 : 1);
+    const throttle = this.repairing ? Math.min(c.throttle, REPAIR_THROTTLE) : c.throttle;
+    let thrust = this.locked ? 0 : throttle * (this.boosting ? BOOST_THRUST : THRUST);
+    // A hurt engine pushes less, and the pair pulls toward the weak side: the pilot must counter-steer.
+    const tL = 1 - this.wear[0] * 0.55;
+    const tR = 1 - this.wear[1] * 0.55;
+    thrust *= ((tL + tR) / 2) * (this.overheated ? 0.75 : 1);
     if (this.airborne) thrust *= 0.4;
     const sand = this.offTrack;
     const drag = (DRAG + SAND_DRAG * sand) * v * v + c.brake * BRAKE_DECEL * clamp(v / 40, 0, 1);
@@ -206,7 +224,8 @@ export class Pod {
     // Steering: yaw rate eases toward the commanded rate; brakes and knife edge tighten it.
     this.tilt += (c.tilt - this.tilt) * damp(7, dt);
     const tight = 1 + c.brake * 0.55 + Math.abs(this.tilt) * 0.15;
-    const targetYaw = c.steer * turnRate(Math.abs(vf)) * tight * (this.airborne ? 0.35 : 1);
+    const pull = this.locked ? 0 : (tL - tR) * throttle * 0.55;
+    const targetYaw = c.steer * turnRate(Math.abs(vf)) * tight * (this.airborne ? 0.35 : 1) + pull;
     this.yawRate += (targetYaw - this.yawRate) * damp(6, dt);
     this.heading += this.yawRate * dt;
     // Rotate velocity with the heading so speed is kept through the turn (minus the slide).
@@ -267,7 +286,7 @@ export class Pod {
       if (vn < 0) {
         this.vel.x -= nx * vn * 1.5;
         this.vel.z -= nz * vn * 1.5;
-        this.hit(-vn, w);
+        this.hit(-vn, w, this.sideOf(-nx, -nz));
       }
       this.vel.multiplyScalar(0.97);
       this.scraping = true;
@@ -281,7 +300,7 @@ export class Pod {
     } else {
       if (this.airborne) {
         if (this.airtime > 0.3) w.events.landed(this, this.airtime);
-        if (this.vel.y < -18) this.hit(-this.vel.y * 0.35, w);
+        if (this.vel.y < -18) this.hit(-this.vel.y * 0.35, w, -1);
       }
       this.airborne = false;
       this.vel.y += (70 * (target - this.pos.y) - 11 * this.vel.y) * dt;
@@ -315,7 +334,7 @@ export class Pod {
         if (vn < 0) {
           this.vel.x -= nx * vn * 1.35;
           this.vel.z -= nz * vn * 1.35;
-          this.hit(-vn, w);
+          this.hit(-vn, w, this.sideOf(-nx, -nz));
         }
         this.vel.multiplyScalar(0.95);
         this.scraping = true;
@@ -352,21 +371,46 @@ export class Pod {
         this.vel.z -= nz * rv * 0.6 * mine;
         o.vel.x += nx * rv * 0.6 * theirs;
         o.vel.z += nz * rv * 0.6 * theirs;
-        this.hit(-rv * 0.5 * mine, w);
-        o.hit(-rv * 0.5 * theirs, w);
+        this.hit(-rv * 0.5 * mine, w, this.sideOf(-nx, -nz));
+        o.hit(-rv * 0.5 * theirs, w, o.sideOf(nx, nz));
       }
     }
   }
 
-  /** Collision of normal speed `vn` (m/s). Light taps are free; hard hits add up to a crash. */
-  hit(vn: number, w: PodWorld): void {
+  /** Overall damage: the worse engine (HUD, smoke, screen tint). */
+  get damage(): number {
+    return Math.max(this.wear[0], this.wear[1]);
+  }
+
+  /** Which engine faces horizontal world direction (dx, dz): 0 left, 1 right. */
+  sideOf(dx: number, dz: number): 0 | 1 {
+    return dx * Math.cos(this.heading) + dz * Math.sin(this.heading) > 0 ? 1 : 0;
+  }
+
+  /**
+   * Collision of normal speed `vn` (m/s) on engine `side` (-1 = both, e.g. a hard landing). Light taps
+   * are free; hard hits add up to a crash.
+   */
+  hit(vn: number, w: PodWorld, side: -1 | 0 | 1): void {
     if (vn < 6 || this.ghost > 0 || !this.alive) return;
     const strength = clamp(vn / 90, 0, 1);
-    this.damage += strength * strength * 0.9 * this.dmgScale;
+    const amount = strength * strength * 0.9;
     _v.copy(this.pos);
     w.events.impact(this, strength, _v);
-    if (this.damage >= 1) {
-      this.damage = 1;
+    if (side === -1) {
+      this.damageEngine(0, amount * 0.6, w);
+      this.damageEngine(1, amount * 0.6, w);
+    } else {
+      this.damageEngine(side, amount, w);
+      this.damageEngine(side === 0 ? 1 : 0, amount * 0.25, w);
+    }
+  }
+
+  /** Wear one engine (shots, flames, collisions); a destroyed engine takes the pod with it. */
+  damageEngine(side: 0 | 1, amount: number, w: PodWorld): void {
+    if (this.ghost > 0 || !this.alive) return;
+    this.wear[side] = Math.min(1, this.wear[side] + amount * this.dmgScale);
+    if (this.wear[side] >= 1) {
       this.alive = false;
       this.crashes++;
       this.respawnIn = 2.6;
@@ -380,7 +424,7 @@ export class Pod {
   /** Back on the centreline after a crash, a little behind where it happened. */
   respawn(track: Track): void {
     this.alive = true;
-    this.damage = 0;
+    this.wear[0] = this.wear[1] = 0;
     this.heat = 0;
     this.overheated = false;
     this.ghost = 2.5;
@@ -409,16 +453,20 @@ export class Pod {
     _e.set(this.pitch, -this.heading, -(this.bank + roll));
     m.root.quaternion.setFromEuler(_e);
     // Engines ride independently; the cockpit swings out on its cables against the turn.
-    m.engineL.position.y = Math.sin(this.time * 9) * 0.06 * (1 + this.damage * 3);
-    m.engineR.position.y = Math.sin(this.time * 9 + 1.3) * 0.06 * (1 + this.damage * 3);
-    m.engineL.rotation.z = m.engineR.rotation.z = Math.sin(this.time * 23) * 0.01 * (1 + this.damage * 6);
+    // A hurt engine shakes and wobbles on its own.
+    m.engineL.position.y = Math.sin(this.time * 9) * 0.06 * (1 + this.wear[0] * 4);
+    m.engineR.position.y = Math.sin(this.time * 9 + 1.3) * 0.06 * (1 + this.wear[1] * 4);
+    m.engineL.rotation.z = Math.sin(this.time * 23) * 0.01 * (1 + this.wear[0] * 8);
+    m.engineR.rotation.z = Math.sin(this.time * 21 + 2) * 0.01 * (1 + this.wear[1] * 8);
     const swayTarget = clamp(-lateralG / 40, -3, 3);
     this.swayV += ((swayTarget - this.sway) * 30 - this.swayV * 5) * dt;
     this.sway += this.swayV * dt;
     m.cockpit.position.x = this.sway;
     m.cockpit.rotation.z = -this.sway * 0.25;
     m.cockpit.rotation.y = this.sway * 0.04;
-    m.update(dt, this.locked ? 0.25 : this.ctl.throttle, this.boosting ? 1 : 0);
+    this.health[0] = 1 - this.wear[0];
+    this.health[1] = 1 - this.wear[1];
+    m.update(dt, this.locked ? 0.25 : this.repairing ? Math.min(this.ctl.throttle, REPAIR_THROTTLE) : this.ctl.throttle, this.boosting ? 1 : 0, this.health);
   }
 
   /** World quaternion of the pod without the roll maneuver (cameras use it so they do not spin). */

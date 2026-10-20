@@ -15,6 +15,7 @@ import type { Collider } from '../world/props';
 import { groundHeight } from '../world/terrain';
 import type { Track } from '../world/track';
 import { Pilot, type PilotTraits } from './ai';
+import { Snipers, type SniperEvents } from './hazards';
 import type { CameraRig } from './camera';
 import type { Fx } from './fx';
 import { Pod, type PodEvents, type PodSpec, type PodWorld } from './pod';
@@ -38,7 +39,7 @@ const livery = (skin: string, band: string, trim: string, cockpit: string, engin
 /** Index 0 is the player. Grid order: index 1 (Sebulba) on pole. */
 const ROSTER: { spec: PodSpec; traits: PilotTraits }[] = [
   { spec: { name: 'Anakin Skywalker', species: 'Human', make: 'Radon-Ulzer 620C', livery: ANAKIN_LIVERY }, traits: { lane: 0, pace: 1, aggression: 0 } },
-  { spec: { name: 'Sebulba', species: 'Dug', make: 'Collor Pondrat Plug-F Mammoth', livery: livery('#ffb070', '#7a2e10', '#2a2a2a', '#c4601c', 1.22) }, traits: { lane: -6, pace: 1.03, aggression: 1.6 } },
+  { spec: { name: 'Sebulba', species: 'Dug', make: 'Collor Pondrat Plug-F Mammoth', livery: livery('#ffb070', '#7a2e10', '#2a2a2a', '#c4601c', 1.22) }, traits: { lane: -6, pace: 1.03, aggression: 1.6, flame: true } },
   { spec: { name: 'Gasgano', species: 'Xexto', make: 'Ord Pedrovia', livery: livery('#c8d8b0', '#2a6e3a', '#d8c060', '#3c7a46') }, traits: { lane: 10, pace: 1.0, aggression: 0.3 } },
   { spec: { name: 'Mawhonic', species: 'Gran', make: 'GPE-3130', livery: livery('#f2f6ff', '#2aa198', '#f0f0f0', '#2a8a80', 0.9) }, traits: { lane: -14, pace: 0.98, aggression: 0.2 } },
   { spec: { name: 'Ody Mandrell', species: "Er'Kit", make: 'Exelbrok XL 5115', livery: livery('#d8d0c8', '#b02020', '#f0e0c0', '#8a1a1a', 1.08) }, traits: { lane: 4, pace: 0.97, aggression: 0.6 } },
@@ -93,6 +94,10 @@ export class Race {
   private wrongShown = false;
   private hudPods: HudPod[];
   private hudState: HudState;
+  private snipers: Snipers;
+  /** The engine-hit repair hint shows once per race. */
+  private hintShown = false;
+  private repairedFrom = 0;
   /** Rival engine voices, index i mirrors pods[i + 1]. */
   private voices: EngineVoice[];
 
@@ -129,7 +134,8 @@ export class Race {
       speed: 0,
       heat: 0,
       overheated: false,
-      damage: 0,
+      engines: this.player.wear,
+      repairing: false,
       raceTime: 0,
       lapTime: 0,
       lapTimes: this.player.lapTimes,
@@ -142,14 +148,49 @@ export class Race {
     d.hud.letterbox(true);
     d.audio.setRacing(true);
     d.audio.music('race');
+    this.snipers = new Snipers(d.track, this.sniperEvents());
+    d.scene.add(this.snipers.group);
     this.nextShot();
   }
 
   dispose(): void {
     for (const p of this.pods) this.d.scene.remove(p.model.root);
+    this.d.scene.remove(this.snipers.group);
     this.d.hud.caption('', '');
     this.d.hud.letterbox(false);
     this.d.audio.setRacing(false);
+  }
+
+  private sniperEvents(): SniperEvents {
+    const d = this.d;
+    return {
+      glint: (target) => {
+        if (!target.player) return;
+        d.audio.sniperGlint();
+        d.hud.banner(t('race.sniper'), 'warn', 0.9);
+      },
+      shot: (from, target, hit, dodged) => {
+        d.audio.gunshot(from.distanceTo(d.rig.camera.position));
+        if (hit) {
+          _b.copy(target.vel).multiplyScalar(0.3);
+          d.fx.burst('spark', target.pos, _b, 40, 25);
+          d.fx.burst('smoke', target.pos, _b, 6, 6);
+        }
+        if (!target.player) return;
+        if (hit) {
+          d.audio.impact(0.7);
+          d.rig.shake(0.7);
+          d.engine.flash = Math.max(d.engine.flash, 0.2);
+          if (!this.hintShown) {
+            this.hintShown = true;
+            d.hud.banner(t('race.enginehit'), 'warn', 2.5);
+          }
+        } else if (dodged) {
+          d.hud.trick(t('race.dodge'));
+          this.player.heat = Math.max(0, this.player.heat - 0.2);
+        }
+      },
+    };
   }
 
   private events(): PodEvents {
@@ -313,12 +354,33 @@ export class Race {
 
     if (this.phase === 'racing' || this.phase === 'finished') this.time += dt;
 
-    // AI.
+    // AI, and Sebulba's flame vent on whoever he catches alongside.
     for (const pilot of this.pilots) {
       if (pilot.pod.locked || pilot.pod.out) continue;
+      const wasFlaming = pilot.flameTime > 0;
       pilot.drive(dt, d.track, d.colliders, this.pods, diff, p.progress);
       if (pilot.pendingRoll) pilot.pod.startRoll(pilot.pendingRoll, this.world.events);
+      const victim = pilot.flameVictim;
+      if (victim && pilot.flameTime > 0 && pilot.pod.alive) {
+        const src = pilot.pod;
+        const side = src.sideOf(victim.pos.x - src.pos.x, victim.pos.z - src.pos.z);
+        (side ? src.model.engineR : src.model.engineL).getWorldPosition(_a);
+        _b.subVectors(victim.pos, _a).multiplyScalar(2.5).add(src.vel);
+        d.fx.burst('fire', _a, _b, 3, 4);
+        if (victim.pos.distanceTo(src.pos) < 18) {
+          victim.damageEngine(victim.sideOf(src.pos.x - victim.pos.x, src.pos.z - victim.pos.z), dt * 0.22, this.world);
+          victim.heat = Math.min(1, victim.heat + dt * 0.25);
+        }
+        if (!wasFlaming) {
+          if (victim.player || src.pos.distanceTo(d.rig.camera.position) < 120) d.audio.flame();
+          if (victim.player) {
+            d.hud.banner(t('race.flame'), 'warn', 1.2);
+            d.rig.shake(0.5);
+          }
+        }
+      }
     }
+    if (this.phase === 'racing') this.snipers.update(dt, this.pods, this.world, diff.sniper, d.rig.camera);
 
     // Physics, laps, respawns.
     for (const pod of this.pods) {
@@ -350,7 +412,14 @@ export class Race {
     h.speed = p.speed;
     h.heat = p.heat;
     h.overheated = p.overheated;
-    h.damage = p.damage;
+    h.repairing = p.repairing;
+    // A full repair after real damage earns a callout.
+    if (p.repairing) this.repairedFrom = Math.max(this.repairedFrom, p.damage);
+    else this.repairedFrom = 0;
+    if (p.repairing && p.damage === 0 && this.repairedFrom > 0.2) {
+      this.repairedFrom = 0;
+      d.hud.trick(t('race.repaired'));
+    }
     h.raceTime = p.finishTime ?? this.time;
     h.lapTime = this.phase === 'racing' ? this.time - p.lapStart : 0;
     h.bestLap = p.lapTimes.length ? Math.min(...p.lapTimes) : null;
@@ -446,7 +515,8 @@ export class Race {
       const close = pod.pos.distanceToSquared(d.rig.camera.position) < 600 * 600;
       if (!close) continue;
       const speed = pod.speed;
-      for (const e of [pod.model.engineL, pod.model.engineR]) {
+      for (let i = 0; i < 2; i++) {
+        const e = i ? pod.model.engineR : pod.model.engineL;
         e.getWorldPosition(_a);
         if (!pod.airborne && speed > 20) {
           _b.copy(_a);
@@ -455,9 +525,16 @@ export class Race {
           d.dust.emit(_b, _a, pod.offTrack > 0 ? 5 : 2);
           e.getWorldPosition(_a);
         }
-        if (pod.damage > 0.45 && Math.random() < pod.damage * dt * 30) {
+        // A hurt engine trails smoke, a dying one sparks too.
+        const wear = pod.wear[i];
+        if (wear > 0.3 && Math.random() < wear * dt * 40) {
           _b.copy(pod.vel).multiplyScalar(0.2);
           d.fx.burst('smoke', _a, _b, 1, 3);
+          if (wear > 0.7) d.fx.burst('spark', _a, _b, 2, 6);
+        }
+        if (pod.repairing && wear > 0 && Math.random() < dt * 20) {
+          _b.copy(pod.vel);
+          d.fx.burst('spark', _a, _b, 2, 3);
         }
         if (pod.overheated && Math.random() < dt * 25) {
           _b.set(0, 3, 0);

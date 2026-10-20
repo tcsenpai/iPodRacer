@@ -12,7 +12,7 @@ A podracing game in the style of *Star Wars: Episode I – The Phantom Menace* (
 
 ## Status
 
-Playable MVP: the Boonta Eve Classic, three laps against five rivals (Sebulba, Gasgano, Mawhonic, Ody Mandrell, Aldar Beedo) on three circuit classes: **Amateur**, **Semi-Pro**, **Galactic** (rival pace, cornering, boost use, ramming and damage taken scale with it). Cinematic intro with rival introductions, countdown with a perfect-start window, slow-motion crashes and finish, results with best record per class. Procedural engine sound with doppler flybys and music; English and Italian.
+Playable MVP: the Boonta Eve Classic, three laps against five rivals (Sebulba, Gasgano, Mawhonic, Ody Mandrell, Aldar Beedo) on three circuit classes: **Amateur**, **Semi-Pro**, **Galactic** (rival pace, cornering, boost use, ramming and damage taken scale with it). Engines take damage separately (a hurt engine pulls the pod to its side; hold repair like in Episode I: Racer); Tusken snipers on the canyon rims telegraph each shot with a scope glint (barrel roll or knife edge to dodge) and Sebulba vents flame at anyone alongside. Mos Espa grandstands with thousands of animated fans, hangars, a sandcrawler, vaporators, Tusken camps and bantha herds; sandstone strata, wind-rippled sand and sculpted hoodoos from procedural shaders. Cinematic intro with rival introductions, countdown with a perfect-start window, slow-motion crashes and finish, results with best record per class. Procedural engine sound with doppler flybys and music; English and Italian.
 
 | Keyboard | Gamepad | Action |
 |---|---|---|
@@ -21,7 +21,8 @@ Playable MVP: the Boonta Eve Classic, three laps against five rivals (Sebulba, G
 | A D / Left Right | Left stick | Steer |
 | Shift / Space | A | Boost (builds engine heat; near misses cool it) |
 | Double-tap A or D | X / B | Barrel roll: sidestep, shoulders rivals aside |
-| Q / E | LB / RB | Knife edge: tilt 90 degrees to slip past rocks |
+| Q / E | LB / RB | Knife edge: tilt 90 degrees to slip past rocks and dodge shots |
+| F (hold) | D-pad down | Repair the worse engine (throttle capped, no boost) |
 | C | Y | Camera (chase, far, cockpit) |
 | R | View | Back to the track |
 | Esc / P | Start | Pause |

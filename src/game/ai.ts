@@ -25,6 +25,8 @@ export interface PilotTraits {
   /** Personal pace and aggression multipliers on top of the difficulty. */
   pace: number;
   aggression: number;
+  /** Sebulba's dirty trick: a flame vent fired into whoever runs alongside. */
+  flame?: boolean;
 }
 
 /** Highest speed at which a curve of radius r can be held: fixed point of v = turnRate(v) * r. */
@@ -38,6 +40,10 @@ export class Pilot {
   private boostHold = 0;
   private wander = Math.random() * 100;
   private rollWait = 3 + Math.random() * 6;
+  private flameCooldown = 4;
+  /** Seconds left on the current flame burst, and its victim (read by the race to apply it). */
+  flameTime = 0;
+  flameVictim: Pod | null = null;
 
   constructor(
     readonly pod: Pod,
@@ -136,7 +142,19 @@ export class Pilot {
     // Boost on a long clear straight, until the engines get hot.
     if (!assist && this.boostHold <= 0 && limit > VMAX * 1.25 && pod.heat < 0.4 && Math.random() < diff.boost * dt) this.boostHold = 2 + Math.random() * 2;
     this.boostHold -= dt;
-    c.boost = this.boostHold > 0 && pod.heat < 0.8 && limit > VMAX * 1.1 && c.brake === 0;
+    // Repairs on the straights once an engine is badly hurt, never while boosting.
+    c.repair = pod.damage > 0.45 && limit > VMAX * 1.05;
+    c.boost = this.boostHold > 0 && pod.heat < 0.8 && limit > VMAX * 1.1 && c.brake === 0 && !c.repair;
+
+    // Flame vent: only with ramming allowed (not on the amateur circuit), against the player alongside.
+    this.flameCooldown -= dt;
+    this.flameTime = Math.max(0, this.flameTime - dt);
+    if (this.flameTime <= 0) this.flameVictim = null;
+    if (this.traits.flame && !assist && ram && diff.ramming > 0 && this.flameCooldown <= 0) {
+      this.flameTime = 1.1;
+      this.flameVictim = ram;
+      this.flameCooldown = 9 / diff.ramming;
+    }
 
     // Showing off: an occasional barrel roll, more often when rubbing panels.
     this.rollWait -= dt * (ram ? 3 : 1);

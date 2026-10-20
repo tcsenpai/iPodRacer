@@ -51,6 +51,7 @@ const KEYBOARD: readonly [string | StringKey, StringKey][] = [
   ['Shift / Space', 'ctl.boost'],
   ['2× A / D', 'ctl.roll'],
   ['Q / E', 'ctl.tilt'],
+  ['F', 'ctl.repair'],
   ['C', 'ctl.camera'],
   ['R', 'ctl.reset'],
   ['Esc / P', 'ctl.pause'],
@@ -62,6 +63,7 @@ const GAMEPAD: readonly [string | StringKey, StringKey][] = [
   ['A', 'ctl.boost'],
   ['X / B', 'ctl.rollLeft'],
   ['LB / RB', 'ctl.tilt'],
+  ['D-pad ↓', 'ctl.repair'],
   ['Y', 'ctl.camera'],
   ['Start', 'ctl.pause'],
 ];

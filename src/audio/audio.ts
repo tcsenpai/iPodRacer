@@ -1160,6 +1160,64 @@ export class GameAudio {
     v.done(end + 0.02);
   }
 
+  /** Tusken scope glint: a thin rising ring, the warning before the shot. */
+  sniperGlint(): void {
+    const c = this.c;
+    if (!c) return;
+    const v = this.shot(c, 0.4, true);
+    if (!v) return;
+    const t = c.ctx.currentTime;
+    const o = v.osc('sine', 2400, t);
+    o.frequency.exponentialRampToValueAtTime(4200, t + 0.8);
+    const g = v.gain(0);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.18, t + 0.6);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.9);
+    wire(o, g, v.out);
+    v.done(t + 0.95);
+  }
+
+  /** Slugthrower crack, quieter and duller with distance (m). */
+  gunshot(distance: number): void {
+    const c = this.c;
+    if (!c) return;
+    const v = this.shot(c, 0.6, false);
+    if (!v) return;
+    const far = 1 / (1 + distance / 150);
+    const t = c.ctx.currentTime + Math.min(distance / 343, 0.5);
+    const n = v.noise(c.white, t);
+    const bp = v.filter('bandpass', 2600 * (0.4 + far), 0.9, t);
+    const g = v.gain(0);
+    perc(g.gain, t, 0.9 * far + 0.1, 0.001, 0.18);
+    wire(n, bp, g, v.out);
+    const th = v.osc('sine', 160, t);
+    th.frequency.exponentialRampToValueAtTime(50, t + 0.2);
+    const tg = v.gain(0);
+    perc(tg.gain, t, 0.6 * far, 0.002, 0.25);
+    wire(th, tg, v.out);
+    v.done(t + 0.4);
+  }
+
+  /** Sebulba's flame vent: a roaring gas burst. */
+  flame(): void {
+    const c = this.c;
+    if (!c) return;
+    const v = this.shot(c, 0.7, true);
+    if (!v) return;
+    const t = c.ctx.currentTime;
+    const n = v.noise(c.brown, t);
+    const lp = v.filter('lowpass', 500, 0.8, t);
+    lp.frequency.linearRampToValueAtTime(2200, t + 0.2);
+    lp.frequency.linearRampToValueAtTime(700, t + 1.1);
+    const g = v.gain(0);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.9, t + 0.08);
+    g.gain.setValueAtTime(0.8, t + 0.9);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 1.25);
+    wire(n, lp, v.shaper(2), g, v.out);
+    v.done(t + 1.3);
+  }
+
   boost(): void {
     const c = this.c;
     if (!c) return;

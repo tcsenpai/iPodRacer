@@ -22,11 +22,12 @@ export class DustTrail {
     sprite.width = sprite.height = 64;
     const g = sprite.getContext('2d')!;
     const grd = g.createRadialGradient(32, 32, 0, 32, 32, 32);
-    grd.addColorStop(0, 'rgba(255,255,255,1)');
+    grd.addColorStop(0, 'rgba(255,255,255,0.8)');
+    grd.addColorStop(0.45, 'rgba(255,255,255,0.35)');
     grd.addColorStop(1, 'rgba(255,255,255,0)');
     g.fillStyle = grd;
     g.fillRect(0, 0, 64, 64);
-    const mat = new THREE.PointsMaterial({ size: 1.8, map: new THREE.CanvasTexture(sprite), vertexColors: true, transparent: true, depthWrite: false });
+    const mat = new THREE.PointsMaterial({ size: 2.6, map: new THREE.CanvasTexture(sprite), vertexColors: true, transparent: true, depthWrite: false });
     this.points = new THREE.Points(geo, mat);
     this.points.frustumCulled = false;
   }
@@ -55,7 +56,7 @@ export class DustTrail {
       c[i * 4] = 0.86;
       c[i * 4 + 1] = 0.7;
       c[i * 4 + 2] = 0.5;
-      c[i * 4 + 3] = t >= 1 ? 0 : 0.35 * (1 - t) * Math.min(1, t * 8);
+      c[i * 4 + 3] = t >= 1 ? 0 : 0.2 * (1 - t) * Math.min(1, t * 8);
     }
     this.points.geometry.attributes.position.needsUpdate = true;
     this.points.geometry.attributes.color.needsUpdate = true;

@@ -72,13 +72,17 @@ export const FinishShader = {
     }
 
     void main() {
-      vec2 d = vUv - 0.5;
+      // Desert heat shimmer: a fine, slowly crawling refraction in the band where the far ground meets
+      // the sky (screen-space approximation; the camera rarely pitches far from level).
+      float band = smoothstep(0.25, 0.45, vUv.y) * (1.0 - smoothstep(0.5, 0.62, vUv.y));
+      vec2 uv = vUv + vec2(sin(vUv.y * 420.0 + uTime * 9.0) + sin(vUv.y * 173.0 - uTime * 5.3 + vUv.x * 30.0), 0.0) * 0.00045 * band;
+      vec2 d = uv - 0.5;
       float r2 = dot(d, d);
       vec2 off = d * (0.0016 + uDamage * 0.01 + uSpeed * 0.004);
       vec3 col;
-      col.r = texture2D(tDiffuse, vUv + off).r;
-      col.g = texture2D(tDiffuse, vUv).g;
-      col.b = texture2D(tDiffuse, vUv - off).b;
+      col.r = texture2D(tDiffuse, uv + off).r;
+      col.g = texture2D(tDiffuse, uv).g;
+      col.b = texture2D(tDiffuse, uv - off).b;
       // Zoom blur: taps toward the centre, weighted by distance from it, so the HUD focus stays sharp
       // while the periphery streaks. Jittered start hides the tap banding.
       float zb = uSpeed * smoothstep(0.02, 0.25, r2);

@@ -142,6 +142,8 @@ html, body { margin: 0; height: 100%; background: #000; overflow: hidden; color:
 .hud-bar.heat.hot .hud-bar-fill { background: linear-gradient(90deg, #ff8a2a, var(--red)); }
 .hud-bar.hull .hud-bar-fill { background: linear-gradient(90deg, #9fe39f, #e7f4a0); }
 .hud-bar.hull.crit .hud-bar-fill { background: var(--red); animation: blink 0.5s steps(2) infinite; }
+.hud-repair { grid-column: 1 / span 2; font-size: 13px; font-weight: 800; display: none; }
+.hud-speed.repairing .hud-repair { display: block; color: #8fd3ff; letter-spacing: 0.2em; animation: blink 0.6s steps(2) infinite; }
 .hud-over { grid-column: 1 / span 2; font-size: 13px; font-weight: 800; color: var(--red); visibility: hidden; }
 .hud-speed.over .hud-over { visibility: visible; animation: blink 0.35s steps(2) infinite; }
 .hud-speed.over .hud-bar.heat .hud-bar-track { border-color: var(--red); box-shadow: 0 0 12px rgba(255, 74, 58, 0.8); }

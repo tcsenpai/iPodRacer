@@ -77,14 +77,18 @@ src/
                       explosions, stingers, menu/race music; nothing plays until unlock() from a gesture
   game/pod.ts         Pod: model + physics (thrust/drag, yaw-rate steering, grip/slide, sprung hover with
                       airtime, canyon/dune walls, rock and pod collisions, heat/overheat, damage/crash,
-                      barrel roll, knife edge) and model posing (bank, roll, cockpit swing)
+                      barrel roll, knife edge, per-engine wear with asymmetric pull, hold-to-repair) and
+                      model posing (bank, roll, cockpit swing)
   game/ai.ts          Pilot: racing line with obstacle-aware lane choice, curvature braking, boosts,
-                      ramming the player, show-off rolls; also flies the player after the finish
+                      ramming the player, Sebulba's flame vent, repairs on straights, show-off rolls; also
+                      flies the player after the finish
   game/race.ts        Race: roster/grid, intro shots, countdown + perfect start, laps, ranking, events ->
                       sound/fx/camera/HUD, slow motion, results
   game/camera.ts      CameraRig: chase / far / cockpit with speed FOV, lagging yaw and trauma shake;
                       cinematic shots (crane, orbit, low, crash, finish)
   game/fx.ts          pooled sparks, fireballs, smoke, steam (point sprites with log-depth)
+  game/hazards.ts     Tusken snipers on the canyon rims: glint, ~0.95 s aim, dodge by roll/knife edge,
+                      hits wear one engine (accuracy per difficulty)
   ui/hud.ts           allocation-free HUD (position, lap, times, speed, heat, hull, minimap), banners,
                       trick popups, captions, letterbox
   ui/menus.ts         title (difficulty, settings, controls, language), pause, results
@@ -94,12 +98,18 @@ src/
                       onto the polyline), cheap frame(u), smoothed signed curvature for the AI
   world/terrain.ts    groundHeight(track, x, z): dunes + mesas + canyons, with the track bed carved in;
                       fine corridor mesh along the track + coarse 14 km backdrop; vertex colours + detail map
-  world/props.ts      start/finish gate, sandstone arches, hoodoos, spires on the racing surface; returns
-                      circle colliders (also in track coordinates for the AI)
+  world/surface.ts    shared onBeforeCompile-patched terrain/rock materials: strata, cracks, wind ripples,
+                      glints, packed bed (aBed attribute), footprint-based octave fade; GLSL + CPU noise
+  world/props.ts      start/finish gate, sculpted hoodoos (LOD), swept-tube arches, rubble, spires on the
+                      racing surface; returns circle colliders (also in track coordinates for the AI)
+  world/life.ts       Mos Espa grandstands + instanced animated crowd, hangars, vaporators, sandcrawler,
+                      Tusken camps, bantha herds (CPU flee sim), skyline; models/textures in lifeModels.ts
   world/dust.ts       pooled repulsor dust (RGBA point sprites)
   world/noise.ts      value noise / fbm / ridged noise (optionally tileable)
-  models/podracer.ts  pod model with liveries (rivals reuse it): lathe engines, binder shader, cables,
-                      cockpit; update(dt, throttle, boost) re-fits binder/cables and drives the flames
+  models/podracer.ts  pod model with liveries (paint via shader patch; geometry/textures shared): detailed
+                      engines with spinning fans, flaps, petals; sculpted cockpit, pilot, sagging cables;
+                      update(dt, throttle, boost, health) drives flames, scorch, misfires, binder dropouts
+  models/podTextures.ts  1024 px procedural PBR maps (albedo, paint masks, normal, roughness/metalness)
   main.ts             app flow: title showcase, race, pause, results; persists settings
 electron/main.cjs     desktop shell (loads dist/index.html; F11 / Alt+Enter fullscreen)
 ```
@@ -123,7 +133,8 @@ Known limitations:
 - The corridor strip is 240 m wide on each side: on tight bends its inner side can fold over itself
   (same surface, so it shows as faint z-fighting at most). Keep curve radii above ~250 m or clip.
 - Seam between the corridor and the coarse backdrop can show small steps on steep canyon walls.
-- Rocks use flat-shaded weathered primitives; canyon walls are terrain only (no overhangs).
+- Canyon walls are terrain only (no overhangs); mesh-only crags push at most 1.4 m outward.
+- Snipers on the rims are rarely in frame from the chase camera inside a canyon: the banner and sound carry the warning.
 - The off-track area is open desert up to a soft fence 150 m from the centreline (no shortcut checks
   beyond lap progress, which only counts forward arc length).
 

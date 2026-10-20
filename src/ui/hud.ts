@@ -25,8 +25,10 @@ export interface HudState {
   /** 0..1 */
   heat: number;
   overheated: boolean;
-  /** 0..1 */
-  damage: number;
+  /** Wear per engine 0..1 (left, right). */
+  engines: readonly [number, number];
+  /** Repair droids at work. */
+  repairing: boolean;
   /** Seconds. */
   raceTime: number;
   lapTime: number;
@@ -128,9 +130,9 @@ export class Hud {
   private readonly speedBox: HTMLDivElement;
   private readonly speedN = document.createTextNode('0');
   private readonly heatFill: HTMLDivElement;
-  private readonly hullFill: HTMLDivElement;
+  private readonly hullFill: HTMLDivElement[];
   private readonly heatRow: HTMLDivElement;
-  private readonly hullRow: HTMLDivElement;
+  private readonly hullRow: HTMLDivElement[];
   private readonly wrong: HTMLDivElement;
 
   private readonly map: HTMLCanvasElement;
@@ -157,10 +159,11 @@ export class Hud {
   private lastBest: number | null = -1;
   private lastKmh = -1;
   private lastHeat = -1;
-  private lastHull = -1;
+  private lastHull = [-1, -1];
   private lastOver = false;
   private lastHot = false;
-  private lastCrit = false;
+  private lastCrit = [false, false];
+  private lastRepair = false;
   private lastWrong = false;
   private lastFx = -1;
 
@@ -237,10 +240,15 @@ export class Hud {
       return [row, fill];
     };
     [this.heatRow, this.heatFill] = bar('hud.heat', 'heat');
-    [this.hullRow, this.hullFill] = bar('hud.hull', 'hull');
+    const [rowL, fillL] = bar('hud.engL', 'hull');
+    const [rowR, fillR] = bar('hud.engR', 'hull');
+    this.hullRow = [rowL, rowR];
+    this.hullFill = [fillL, fillR];
     const overTag = this.label('hud.overheated');
     overTag.classList.add('hud-over');
-    this.speedBox.append(speedNum, unit, this.heatRow, this.hullRow, overTag);
+    const repairTag = this.label('hud.repairing');
+    repairTag.classList.add('hud-repair');
+    this.speedBox.append(speedNum, unit, this.heatRow, rowL, rowR, overTag, repairTag);
 
     this.wrong = el('div', 'hud-wrong');
     this.labels.push([this.wrong, 'race.wrongway']);
@@ -397,15 +405,21 @@ export class Hud {
       this.lastOver = s.overheated;
       this.speedBox.classList.toggle('over', s.overheated);
     }
-    const hull = 100 - percent(s.damage);
-    if (hull !== this.lastHull) {
-      this.lastHull = hull;
-      this.hullFill.style.transform = SCALE_X[hull];
+    for (let i = 0; i < 2; i++) {
+      const hull = 100 - percent(s.engines[i]);
+      if (hull !== this.lastHull[i]) {
+        this.lastHull[i] = hull;
+        this.hullFill[i].style.transform = SCALE_X[hull];
+      }
+      const crit = hull <= 30;
+      if (crit !== this.lastCrit[i]) {
+        this.lastCrit[i] = crit;
+        this.hullRow[i].classList.toggle('crit', crit);
+      }
     }
-    const crit = hull <= 30;
-    if (crit !== this.lastCrit) {
-      this.lastCrit = crit;
-      this.hullRow.classList.toggle('crit', crit);
+    if (s.repairing !== this.lastRepair) {
+      this.lastRepair = s.repairing;
+      this.speedBox.classList.toggle('repairing', s.repairing);
     }
     if (s.wrongWay !== this.lastWrong) {
       this.lastWrong = s.wrongWay;

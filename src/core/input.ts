@@ -12,6 +12,8 @@ export interface PodControls {
   boost: boolean;
   /** -1..1 held tilt: roll the pod on its side to slip through gaps (+ = right side down). */
   tilt: number;
+  /** Held: repair droids patch the worst engine (throttle capped, no boost). */
+  repair: boolean;
 }
 
 export type Action = 'camera' | 'pause' | 'confirm' | 'reset' | 'rollLeft' | 'rollRight';
@@ -44,7 +46,7 @@ export class Input {
   private kbSteer = 0;
   /** Last key-down time per steer key, for double-tap barrel rolls. */
   private lastTap: Record<string, number> = {};
-  private out: PodControls = { steer: 0, throttle: 0, brake: 0, boost: false, tilt: 0 };
+  private out: PodControls = { steer: 0, throttle: 0, brake: 0, boost: false, tilt: 0, repair: false };
 
   constructor() {
     window.addEventListener('keydown', (e) => {
@@ -90,6 +92,7 @@ export class Input {
     let brake = this.key('KeyS', 'ArrowDown') ? 1 : 0;
     let boost = this.key('ShiftLeft', 'ShiftRight', 'Space');
     let tilt = (this.key('KeyE') ? 1 : 0) - (this.key('KeyQ') ? 1 : 0);
+    let repair = this.key('KeyF');
 
     const pad = navigator.getGamepads?.().find((p) => p && p.connected);
     if (pad) {
@@ -100,6 +103,7 @@ export class Input {
       throttle = Math.max(throttle, pad.buttons[7]?.value ?? 0);
       brake = Math.max(brake, pad.buttons[6]?.value ?? 0);
       boost ||= !!pad.buttons[0]?.pressed;
+      repair ||= !!pad.buttons[13]?.pressed; // d-pad down
       tilt += (pad.buttons[5]?.pressed ? 1 : 0) - (pad.buttons[4]?.pressed ? 1 : 0);
       for (const [action, idx] of Object.entries(GAMEPAD_ACTIONS) as [Action, number][]) {
         const down = !!pad.buttons[idx]?.pressed;
@@ -112,6 +116,7 @@ export class Input {
     o.brake = clamp(brake, 0, 1);
     o.boost = boost;
     o.tilt = clamp(tilt, -1, 1);
+    o.repair = repair;
     return o;
   }
 }

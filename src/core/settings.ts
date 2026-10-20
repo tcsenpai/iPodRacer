@@ -18,12 +18,14 @@ export interface DifficultyProfile {
   damage: number;
   /** Rubber band: rivals far behind the player gain up to this fraction of extra pace. */
   catchUp: number;
+  /** Chance a Tusken sniper's shot hits a pod that did not dodge (barrel roll or knife edge). */
+  sniper: number;
 }
 
 export const DIFFICULTY: Record<Difficulty, DifficultyProfile> = {
-  amateur: { pace: 0.84, cornering: 0.8, boost: 0.05, ramming: 0, damage: 0.6, catchUp: 0.04 },
-  semipro: { pace: 0.93, cornering: 0.9, boost: 0.12, ramming: 0.4, damage: 1, catchUp: 0.06 },
-  galactic: { pace: 0.98, cornering: 0.97, boost: 0.25, ramming: 1, damage: 1.3, catchUp: 0.08 },
+  amateur: { pace: 0.84, cornering: 0.8, boost: 0.05, ramming: 0, damage: 0.6, catchUp: 0.04, sniper: 0.4 },
+  semipro: { pace: 0.93, cornering: 0.9, boost: 0.12, ramming: 0.4, damage: 1, catchUp: 0.06, sniper: 0.6 },
+  galactic: { pace: 0.98, cornering: 0.97, boost: 0.25, ramming: 1, damage: 1.3, catchUp: 0.08, sniper: 0.8 },
 };
 
 export type CameraMode = 'chase' | 'far' | 'cockpit';
