@@ -46,7 +46,9 @@ export class Track {
   readonly length: number;
   private pts: Float32Array; // x, y, z per sample
   private grid = new Map<number, number[]>();
-  private count: number;
+  readonly count: number;
+  /** Signed horizontal curvature per sample (1/m, + = bending right), smoothed over ~40 m. */
+  readonly curvature: Float32Array;
 
   constructor() {
     this.curve = new THREE.CatmullRomCurve3(
@@ -66,6 +68,39 @@ export class Track {
       if (list) list.push(i);
       else this.grid.set(key, [i]);
     }
+    // Heading change across ±5 samples, divided by the arc between them.
+    this.curvature = new Float32Array(this.count);
+    const n = this.count;
+    const P = this.pts;
+    for (let i = 0; i < n; i++) {
+      const a = ((i - 5 + n) % n) * 3;
+      const b = i * 3;
+      const c = ((i + 5) % n) * 3;
+      const h1 = Math.atan2(P[b + 2] - P[a + 2], P[b] - P[a]);
+      const h2 = Math.atan2(P[c + 2] - P[b + 2], P[c] - P[b]);
+      let d = h2 - h1;
+      if (d > Math.PI) d -= Math.PI * 2;
+      if (d < -Math.PI) d += Math.PI * 2;
+      // atan2(z, x) grows clockwise seen from above (+Y up, +Z toward the viewer): that is a right turn.
+      this.curvature[i] = d / (5 * SAMPLE);
+    }
+  }
+
+  /** Curvature at u (nearest sample). */
+  curvatureAt(u: number): number {
+    const w = ((u % 1) + 1) % 1;
+    return this.curvature[Math.floor(w * this.count) % this.count];
+  }
+
+  /** Centreline x, z pairs (for the minimap). */
+  centerXZ(step = 10): Float32Array {
+    const n = Math.floor(this.count / step);
+    const out = new Float32Array(n * 2);
+    for (let i = 0; i < n; i++) {
+      out[i * 2] = this.pts[i * step * 3];
+      out[i * 2 + 1] = this.pts[i * step * 3 + 2];
+    }
+    return out;
   }
 
   private cellKey(cx: number, cz: number): number {
@@ -94,17 +129,53 @@ export class Track {
         }
       }
     }
-    out.dist = bi < 0 ? Infinity : Math.sqrt(best);
-    out.floorY = bi < 0 ? 0 : this.pts[bi * 3 + 1];
-    out.u = bi < 0 ? 0 : bi / this.count;
+    if (bi < 0) {
+      out.dist = Infinity;
+      out.floorY = 0;
+      out.u = 0;
+      return out;
+    }
+    // Refine onto the polyline segment toward the closer neighbour: smooth u and distance instead of
+    // 4 m steps (gameplay reads lateral offsets from this every frame).
+    const n = this.count;
+    const P = this.pts;
+    const ia = ((bi - 1 + n) % n) * 3;
+    const ib = ((bi + 1) % n) * 3;
+    const dA = (P[ia] - x) ** 2 + (P[ia + 2] - z) ** 2;
+    const dB = (P[ib] - x) ** 2 + (P[ib + 2] - z) ** 2;
+    const i0 = dA < dB ? (bi - 1 + n) % n : bi;
+    const i1 = (i0 + 1) % n;
+    const ax = P[i0 * 3];
+    const az = P[i0 * 3 + 2];
+    const sx = P[i1 * 3] - ax;
+    const sz = P[i1 * 3 + 2] - az;
+    const f = Math.max(0, Math.min(1, ((x - ax) * sx + (z - az) * sz) / (sx * sx + sz * sz)));
+    const qx = ax + sx * f - x;
+    const qz = az + sz * f - z;
+    out.dist = Math.sqrt(qx * qx + qz * qz);
+    out.floorY = P[i0 * 3 + 1] + (P[i1 * 3 + 1] - P[i0 * 3 + 1]) * f;
+    out.u = ((i0 + f) / n) % 1;
     return out;
   }
 
-  /** Centreline point, unit tangent and horizontal right vector at arc parameter u. */
+  /**
+   * Centreline point, unit tangent and horizontal right vector at arc parameter u. Interpolates the
+   * 4 m samples (cheap enough for every pod every frame, unlike the curve's arc-length lookup).
+   */
   frame(u: number, pos: THREE.Vector3, tangent: THREE.Vector3, right: THREE.Vector3): void {
-    const w = ((u % 1) + 1) % 1;
-    this.curve.getPointAt(w, pos);
-    this.curve.getTangentAt(w, tangent);
+    const n = this.count;
+    const P = this.pts;
+    const s = (((u % 1) + 1) % 1) * n;
+    const i0 = Math.floor(s) % n;
+    const i1 = (i0 + 1) % n;
+    const f = s - Math.floor(s);
+    const a = i0 * 3;
+    const b = i1 * 3;
+    pos.set(P[a] + (P[b] - P[a]) * f, P[a + 1] + (P[b + 1] - P[a + 1]) * f, P[a + 2] + (P[b + 2] - P[a + 2]) * f);
+    // Tangent: blend of the two neighbouring segment directions, so it turns smoothly through samples.
+    const p = ((i0 - 1 + n) % n) * 3;
+    const c = ((i1 + 1) % n) * 3;
+    tangent.set(P[b] - P[p] + (P[c] - P[a] - (P[b] - P[p])) * f, P[b + 1] - P[p + 1] + (P[c + 1] - P[a + 1] - (P[b + 1] - P[p + 1])) * f, P[b + 2] - P[p + 2] + (P[c + 2] - P[a + 2] - (P[b + 2] - P[p + 2])) * f).normalize();
     right.set(-tangent.z, 0, tangent.x).normalize();
   }
 }

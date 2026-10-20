@@ -12,17 +12,29 @@ export interface PodracerModel {
   /** Chase-camera anchor (behind and above the cockpit) and pilot-eye anchor. */
   readonly chaseAnchor: THREE.Object3D;
   readonly eyeAnchor: THREE.Object3D;
-  /** throttle 0..1 drives exhaust glow; call every frame after moving the parts. */
-  update(dt: number, throttle: number): void;
+  /** throttle 0..1 drives exhaust glow, boost 0..1 the overdrive flame; call every frame after moving the parts. */
+  update(dt: number, throttle: number, boost?: number): void;
 }
 
+/** Paint scheme and proportions: rivals share the model, each with its own colours. */
+export interface PodLivery {
+  /** Multiplied over the silver panels (white = bare metal). */
+  skin: string;
+  band: string;
+  trim: string;
+  cockpit: string;
+  /** Uniform engine scale (Sebulba's split-X engines are huge). */
+  engineScale: number;
+}
+
+export const ANAKIN_LIVERY: PodLivery = { skin: '#ffffff', band: '#1f4f9e', trim: '#e0b030', cockpit: '#2257a8', engineScale: 1 };
 const ENGINE_LEN = 7.2;
 const ENGINE_GAP = 1.75; // centre offset of each engine from the root
 const _X = new THREE.Vector3(1, 0, 0);
 const COCKPIT_Z = 9.5; // cockpit trails this far behind the engines' rear
 
 /** Painted engine skin: silver panels, blue racing band, panel lines, soot toward the nozzle. */
-function engineTexture(): THREE.CanvasTexture {
+function engineTexture(l: PodLivery): THREE.CanvasTexture {
   const W = 256;
   const H = 512; // v runs front (0) to back (1)
   const c = document.createElement('canvas');
@@ -42,10 +54,14 @@ function engineTexture(): THREE.CanvasTexture {
   g.strokeStyle = 'rgba(40,44,50,0.55)';
   g.lineWidth = 1.5;
   for (let y = 0; y < H; y += 32) g.strokeRect(0, y, W, 32);
-  // Blue racing band and a thin gold pinstripe.
-  g.fillStyle = '#1f4f9e';
+  g.globalCompositeOperation = 'multiply';
+  g.fillStyle = l.skin;
+  g.fillRect(0, 0, W, H);
+  g.globalCompositeOperation = 'source-over';
+  // Racing band and a thin pinstripe.
+  g.fillStyle = l.band;
   g.fillRect(0, H * 0.32, W, H * 0.12);
-  g.fillStyle = '#e0b030';
+  g.fillStyle = l.trim;
   g.fillRect(0, H * 0.45, W, 5);
   // Soot toward the exhaust.
   const soot = g.createLinearGradient(0, H * 0.7, 0, H);
@@ -59,13 +75,13 @@ function engineTexture(): THREE.CanvasTexture {
   return tex;
 }
 
-function cockpitTexture(): THREE.CanvasTexture {
+function cockpitTexture(l: PodLivery): THREE.CanvasTexture {
   const c = document.createElement('canvas');
   c.width = c.height = 256;
   const g = c.getContext('2d')!;
-  g.fillStyle = '#2257a8';
+  g.fillStyle = l.cockpit;
   g.fillRect(0, 0, 256, 256);
-  g.fillStyle = '#e8b432';
+  g.fillStyle = l.trim;
   g.fillRect(0, 96, 256, 26);
   g.fillStyle = 'rgba(255,255,255,0.08)';
   for (let i = 0; i < 256; i += 32) g.fillRect(i, 0, 2, 256);
@@ -151,9 +167,9 @@ function buildEngine(skin: THREE.Material, dark: THREE.Material, glowMat: THREE.
   return g;
 }
 
-export function createPodracer(): PodracerModel {
+export function createPodracer(livery: PodLivery = ANAKIN_LIVERY): PodracerModel {
   const root = new THREE.Group();
-  const skin = new THREE.MeshStandardMaterial({ map: engineTexture(), metalness: 0.65, roughness: 0.38 });
+  const skin = new THREE.MeshStandardMaterial({ map: engineTexture(livery), metalness: 0.65, roughness: 0.38 });
   const dark = new THREE.MeshStandardMaterial({ color: 0x15161a, metalness: 0.4, roughness: 0.7 });
   const cable = new THREE.MeshStandardMaterial({ color: 0x2a2b30, metalness: 0.8, roughness: 0.35 });
   const glowMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(4, 1.6, 0.6), toneMapped: true });
@@ -161,8 +177,11 @@ export function createPodracer(): PodracerModel {
   // Engines: their own groups so gameplay can sway them; the origin of each is at its intake lip.
   const engineL = buildEngine(skin, dark, glowMat);
   const engineR = buildEngine(skin, dark, glowMat);
-  engineL.position.set(-ENGINE_GAP, 0, -ENGINE_LEN / 2);
-  engineR.position.set(ENGINE_GAP, 0, -ENGINE_LEN / 2);
+  const es = livery.engineScale;
+  engineL.scale.setScalar(es);
+  engineR.scale.setScalar(es);
+  engineL.position.set(-ENGINE_GAP * es, 0, (-ENGINE_LEN / 2) * es);
+  engineR.position.set(ENGINE_GAP * es, 0, (-ENGINE_LEN / 2) * es);
   root.add(engineL, engineR);
 
   // Exhaust plumes: additive cones behind each nozzle, scaled by throttle.
@@ -182,7 +201,7 @@ export function createPodracer(): PodracerModel {
   const tubGeo = new THREE.CapsuleGeometry(0.75, 1.5, 8, 24);
   tubGeo.rotateX(Math.PI / 2);
   tubGeo.scale(1, 0.62, 1);
-  const tub = new THREE.Mesh(tubGeo, new THREE.MeshStandardMaterial({ map: cockpitTexture(), metalness: 0.45, roughness: 0.4 }));
+  const tub = new THREE.Mesh(tubGeo, new THREE.MeshStandardMaterial({ map: cockpitTexture(livery), metalness: 0.45, roughness: 0.4 }));
   tub.castShadow = true;
   cockpit.add(tub);
   for (const s of [-1, 1]) {
@@ -246,7 +265,7 @@ export function createPodracer(): PodracerModel {
     cockpit,
     chaseAnchor,
     eyeAnchor,
-    update(dt, throttle) {
+    update(dt, throttle, boost = 0) {
       time += dt;
       // Gameplay may have moved the parts since the last render: refresh their local matrices first.
       engineL.updateMatrix();
@@ -270,11 +289,13 @@ export function createPodracer(): PodracerModel {
         cables[i].scale.set(1, 1, a.distanceTo(b));
         cables[i].lookAt(b.applyMatrix4(root.matrixWorld));
       }
+      // Overdrive: a longer, white-blue flame (above the bloom threshold so it flares).
       for (const p of plumes) {
-        const k = 0.35 + throttle * 0.9 + Math.sin(time * 60 + p.id) * 0.05;
-        p.scale.set(1, 1, k);
+        const k = 0.35 + throttle * 0.9 + boost * 1.6 + Math.sin(time * 60 + p.id) * (0.05 + boost * 0.15);
+        p.scale.set(1 + boost * 0.25, 1 + boost * 0.25, k);
       }
-      glowMat.color.setRGB(1.2 + throttle * 1.8, 0.6 + throttle * 0.7, 0.3 + throttle * 0.25);
+      plumeMat.color.setRGB(1 + boost * 0.4, 0.5 + boost * 0.6, 0.28 + boost * 1.2);
+      glowMat.color.setRGB(1.2 + throttle * 1.8 + boost * 2, 0.6 + throttle * 0.7 + boost * 2, 0.3 + throttle * 0.25 + boost * 3);
     },
   };
 }

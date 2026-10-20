@@ -45,6 +45,8 @@ export class Engine {
   flash = 0;
   damage = 0;
   fade = 0;
+  /** 0..1 zoom blur strength (finish pass). */
+  speed = 0;
 
   constructor(container: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({
@@ -124,6 +126,7 @@ export class Engine {
     u.uFlash.value = this.flash;
     u.uDamage.value = this.damage;
     u.uFade.value = this.fade;
+    u.uSpeed.value = this.speed;
     this.composer.render();
   }
 

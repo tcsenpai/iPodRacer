@@ -11,6 +11,8 @@ export const FinishShader = {
     uDamage: { value: 0 },
     uFade: { value: 0 },
     uGrain: { value: 0.03 },
+    /** 0..1 radial zoom blur toward the screen edges: the sense of speed at 800 km/h. */
+    uSpeed: { value: 0 },
     /** Film grade strength (0 = neutral, 1 = default look). */
     uGrade: { value: 1 },
     uSunUv: { value: new THREE.Vector2(0.5, 0.5) },
@@ -24,7 +26,7 @@ export const FinishShader = {
   `,
   fragmentShader: /* glsl */ `
     uniform sampler2D tDiffuse, tSunVis;
-    uniform float uTime, uFlash, uDamage, uFade, uGrain, uGrade, uFlare, uAspect;
+    uniform float uTime, uFlash, uDamage, uFade, uGrain, uGrade, uFlare, uAspect, uSpeed;
     uniform vec2 uSunUv;
     varying vec2 vUv;
     const vec3 LUMA = vec3(0.2126, 0.7152, 0.0722);
@@ -72,11 +74,22 @@ export const FinishShader = {
     void main() {
       vec2 d = vUv - 0.5;
       float r2 = dot(d, d);
-      vec2 off = d * (0.0016 + uDamage * 0.01);
+      vec2 off = d * (0.0016 + uDamage * 0.01 + uSpeed * 0.004);
       vec3 col;
       col.r = texture2D(tDiffuse, vUv + off).r;
       col.g = texture2D(tDiffuse, vUv).g;
       col.b = texture2D(tDiffuse, vUv - off).b;
+      // Zoom blur: taps toward the centre, weighted by distance from it, so the HUD focus stays sharp
+      // while the periphery streaks. Jittered start hides the tap banding.
+      float zb = uSpeed * smoothstep(0.02, 0.25, r2);
+      if (zb > 0.001) {
+        vec3 acc = col;
+        float j = rand(vUv * 371.0);
+        for (int i = 1; i <= 6; i++) {
+          acc += texture2D(tDiffuse, vUv - d * (float(i) + j) * 0.012 * zb).rgb;
+        }
+        col = acc / 7.0;
+      }
 
       // Film grade (display-referred): gentle S-curve, cool shadows / warm highlights, a touch of
       // saturation. Multiplicative toning keeps deep space black.

@@ -48,8 +48,19 @@ function checkerTexture(): THREE.CanvasTexture {
   return tex;
 }
 
-export function buildProps(track: Track): THREE.Group {
+/** Solid vertical obstacle footprint, also in track coordinates so the AI can plan around it. */
+export interface Collider {
+  x: number;
+  z: number;
+  r: number;
+  /** Arc parameter and signed lateral offset (m, + = right of the centreline). */
+  u: number;
+  lat: number;
+}
+
+export function buildProps(track: Track): { group: THREE.Group; colliders: Collider[] } {
   const group = new THREE.Group();
+  const colliders: Collider[] = [];
   const p = new THREE.Vector3();
   const tng = new THREE.Vector3();
   const right = new THREE.Vector3();
@@ -61,6 +72,10 @@ export function buildProps(track: Track): THREE.Group {
     obj.position.set(x, groundHeight(track, x, z), z);
     obj.rotation.y = Math.atan2(-tng.x, -tng.z);
     group.add(obj);
+  };
+  const solid = (u: number, lat: number, r: number) => {
+    track.frame(u, p, tng, right);
+    colliders.push({ x: p.x + right.x * lat, z: p.z + right.z * lat, r, u: ((u % 1) + 1) % 1, lat });
   };
 
   // Start / finish gate: two pylons and a checkered banner over the track.
@@ -77,6 +92,7 @@ export function buildProps(track: Track): THREE.Group {
   banner.castShadow = true;
   gate.add(banner);
   place(gate, 0, 0);
+  for (const s of [-1, 1]) solid(0, s * (TRACK_HALF_WIDTH + 4), 2);
 
   // Natural arches spanning the course.
   for (const u of [0.18, 0.47, 0.71]) {
@@ -88,23 +104,45 @@ export function buildProps(track: Track): THREE.Group {
     arch.position.y = -4; // feet sunk into the sand
     holder.add(arch);
     place(holder, u, 0);
+    for (const s of [-1, 1]) solid(u, s * R, 9);
   }
 
-  // Hoodoos: stacked weathered rock lumps either side of the track.
-  for (let i = 0; i < 70; i++) {
+  /** Stacked weathered rock lumps; returns the footprint radius (widest tier). */
+  const hoodoo = (seed: number, minR: number, maxR: number, tiers: number): [THREE.Group, number] => {
     const h = new THREE.Group();
     let y = 0;
-    const tiers = rng.int(2, 4);
+    let base = 0;
     for (let k = 0; k < tiers; k++) {
-      const r = rng.range(3, 7) * (1 - k * 0.18);
-      const tier = new THREE.Mesh(weather(new THREE.IcosahedronGeometry(r, 2), r * 0.25, r, i * 7 + k), ROCK);
+      const r = rng.range(minR, maxR) * (1 - k * 0.18);
+      base = Math.max(base, r);
+      const tier = new THREE.Mesh(weather(new THREE.IcosahedronGeometry(r, 2), r * 0.25, r, seed * 7 + k), ROCK);
       tier.scale.y = rng.range(1.2, 1.8);
       tier.position.y = y + r * tier.scale.y * 0.8;
       y += r * tier.scale.y * 1.5;
       tier.castShadow = tier.receiveShadow = true;
       h.add(tier);
     }
-    place(h, rng.float(), rng.sign() * rng.range(TRACK_HALF_WIDTH + 30, 200));
+    return [h, base];
+  };
+
+  // Hoodoos either side of the track: a slalom for pods that run wide.
+  for (let i = 0; i < 70; i++) {
+    const [h, r] = hoodoo(i, 3, 7, rng.int(2, 4));
+    const u = rng.float();
+    const lat = rng.sign() * rng.range(TRACK_HALF_WIDTH + 30, 200);
+    place(h, u, lat);
+    solid(u, lat, r * 0.9);
   }
-  return group;
+  // Spires standing on the racing surface itself: the near-miss moments. Kept clear of the start
+  // straight and the arches so the grid launch and the arch fly-throughs stay clean.
+  for (let i = 0; i < 14; i++) {
+    let u = 0;
+    do u = rng.range(0.04, 0.97);
+    while ([0.18, 0.47, 0.71].some((a) => Math.abs(a - u) < 0.015));
+    const [h, r] = hoodoo(100 + i, 2.2, 3.4, rng.int(3, 5));
+    const lat = rng.sign() * rng.range(6, TRACK_HALF_WIDTH - 8);
+    place(h, u, lat);
+    solid(u, lat, r * 0.9);
+  }
+  return { group, colliders };
 }
